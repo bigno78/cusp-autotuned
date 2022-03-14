@@ -249,7 +249,7 @@ def Environment(buildDir):
 
     # add a variable to handle compute capability
     vars.Add(
-        EnumVariable('arch', 'Compute capability code generation', 'sm_20',
+        EnumVariable('arch', 'Compute capability code generation', 'sm_50',
                      allowed_values=('sm_20', 'sm_30', 'sm_50', 'sm_60', 'sm_70')))
 
     # add a variable to handle warnings
