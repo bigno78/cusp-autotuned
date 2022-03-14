@@ -44,7 +44,7 @@ def get_cuda_paths():
     if is_win_64 and os.path.exists(lib_path + "64"):
         # preserve the old workaround with lib_ext
         # if we are on 64bit windows use lib64 if it exists
-        lib_path += 64
+        lib_path += "64"
 
     if os.name == "nt":
         # workaround for newer versions of cuda toolkit
