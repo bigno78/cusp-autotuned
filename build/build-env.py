@@ -25,9 +25,9 @@ def get_cuda_paths():
     else:
         raise ValueError('Error: unknown OS {}.  Where is nvcc installed?'.format(os.name))
 
-    lib_ext = ''
+    is_win_64 = False
     if platform.machine()[-2:] == '64' and platform.platform()[:6] != 'Darwin':
-        lib_ext = '64'
+        is_win_64 = True
 
     # override with environement variables
     if 'CUDA_PATH' in os.environ:
@@ -41,7 +41,19 @@ def get_cuda_paths():
     if 'CUDA_INC_PATH' in os.environ:
         inc_path = os.path.abspath(os.environ['CUDA_INC_PATH'])
 
-    return (bin_path, lib_path + lib_ext, inc_path)
+    if is_win_64 and os.path.exists(lib_path + "64"):
+        # preserve the old workaround with lib_ext
+        # if we are on 64bit windows use lib64 if it exists
+        lib_path += 64
+
+    if os.name == "nt":
+        # workaround for newer versions of cuda toolkit
+        # the library files are not in the lib directory but in its subdirectories
+        alternate_path = lib_path + os.sep + ("x64" if is_win_64 else "Win32")
+        if os.path.exists(alternate_path):
+            lib_path = alternate_path
+
+    return (bin_path, lib_path, inc_path)
 
 
 def get_mkl_paths():
