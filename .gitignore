@@ -120,3 +120,5 @@ performance/spmm/spmm
 #<AutoIgnore/>
 
 *.user
+
+.vscode
