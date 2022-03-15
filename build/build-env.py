@@ -204,6 +204,11 @@ def getCXXFLAGS(mode, backend, warn, warnings_as_errors, hostspblas, CXX):
     if hostspblas == 'mkl':
         result.append('-DINTEL_MKL_SPBLAS')
 
+    if CXX == 'cl':
+        result.append('/std:c++17')
+    else:
+        result.append('-std=c++17')
+
     return result
 
 
@@ -214,6 +219,7 @@ def getNVCCFLAGS(mode, backend, arch):
         # XXX make this work when we've debugged nvcc -G
         # result.append('-G')
         pass
+    result.append('-std=c++17')
     return result
 
 
