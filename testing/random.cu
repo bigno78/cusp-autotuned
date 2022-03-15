@@ -7,24 +7,7 @@
 #include <thrust/unique.h>
 #include <thrust/extrema.h>
 
-#include <limits>
 #include <type_traits>
-
-
-template<typename T>
-auto as_lower_bits(T x)
-    -> std::enable_if_t<std::is_signed_v<T>, unsigned long long>
-{
-    return (long long) x - (long long) std::numeric_limits<T>::min();
-}
-
-
-template<typename T>
-auto as_lower_bits(T x)
-    -> std::enable_if_t<std::is_unsigned_v<T>, unsigned long long>
-{
-    return x;
-}
 
 
 template <typename T>
@@ -39,7 +22,7 @@ struct TestRandomIntegersDistribution
 
         for (size_t i = 0; i < n; i++)
         {
-            unsigned long long raw = as_lower_bits(random[i]);
+            unsigned long long raw = static_cast<std::make_unsigned_t<T>>(random[i]);
             for (size_t nibble = 0; nibble < 2 * sizeof(T); nibble++)
             {
                 counts(nibble, (raw >> (4 * nibble)) % 16)++;
