@@ -27,6 +27,9 @@
 #include <cusp/system/detail/generic/multiply/spgemm.h>
 #include <cusp/system/detail/generic/multiply/spmv.h>
 
+#include <cusp/ktt/ktt.h>
+#include <cusp/system/cuda/ktt/multiply.h>
+
 #include <thrust/functional.h>
 
 namespace cusp
@@ -124,11 +127,47 @@ multiply(thrust::execution_policy<DerivedPolicy> &exec,
     typedef typename MatrixOrVector1::format Format2;
     typedef typename MatrixOrVector2::format Format3;
 
+    std::cout << "Hello\n";
+
     Format1 format1;
     Format2 format2;
     Format3 format3;
 
     multiply(thrust::detail::derived_cast(exec), A, B, C, initialize, combine, reduce, format1, format2, format3);
+}
+
+
+template <typename DerivedPolicy,
+         typename LinearOperator,
+         typename MatrixOrVector1,
+         typename MatrixOrVector2,
+         typename UnaryFunction,
+         typename BinaryFunction1,
+         typename BinaryFunction2>
+typename thrust::detail::disable_if_convertible<UnaryFunction,cusp::known_format>::type
+multiply(cusp::system::cuda::detail::execution_policy<DerivedPolicy> &exec,
+         const LinearOperator&  A,
+         const MatrixOrVector1& B,
+         MatrixOrVector2& C,
+         UnaryFunction   initialize,
+         BinaryFunction1 combine,
+         BinaryFunction2 reduce)
+{
+    typedef typename LinearOperator::format  Format1;
+    typedef typename MatrixOrVector1::format Format2;
+    typedef typename MatrixOrVector2::format Format3;
+
+    Format1 format1;
+    Format2 format2;
+    Format3 format3;
+
+    cusp::ktt::detail::lazy_init();
+
+    if (cusp::ktt::detail::is_enabled) {
+        cusp::system::cuda::ktt::multiply(exec, A, B, C, initialize, combine, reduce, format1, format2, format3);
+    } else {
+        multiply(thrust::detail::derived_cast(exec), A, B, C, initialize, combine, reduce, format1, format2, format3);
+    }
 }
 
 template <typename DerivedPolicy,
