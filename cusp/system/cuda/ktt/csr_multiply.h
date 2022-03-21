@@ -115,7 +115,7 @@ void multiply(cuda::execution_policy<DerivedPolicy>& exec,
 
     std::cout << std::endl;
 
-    cusp::ktt::detail::tuner.reset();
+    //cusp::ktt::detail::tuner.reset();
 }
 
 }
