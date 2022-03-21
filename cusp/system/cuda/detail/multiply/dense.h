@@ -59,7 +59,6 @@ void multiply(cuda::execution_policy<DerivedPolicy>& exec,
 
     cusp::multiply(A_, x_, y_, initialize, combine, reduce);
 
-    std::cout << "copying to output" << std::endl;
     cusp::copy(y_, y);
 }
 

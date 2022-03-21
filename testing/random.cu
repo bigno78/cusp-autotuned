@@ -7,9 +7,8 @@
 #include <thrust/unique.h>
 #include <thrust/extrema.h>
 
-#include <limits>
+#include <type_traits>
 
-// #include <cusp/print.h>
 
 template <typename T>
 struct TestRandomIntegersDistribution
@@ -23,7 +22,7 @@ struct TestRandomIntegersDistribution
 
         for (size_t i = 0; i < n; i++)
         {
-            unsigned long long raw = random[i] - std::numeric_limits<T>::min();
+            unsigned long long raw = static_cast<std::make_unsigned_t<T>>(random[i]);
             for (size_t nibble = 0; nibble < 2 * sizeof(T); nibble++)
             {
                 counts(nibble, (raw >> (4 * nibble)) % 16)++;
