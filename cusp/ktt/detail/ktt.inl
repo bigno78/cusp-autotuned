@@ -3,8 +3,10 @@
 #include <Ktt.h>
 
 #include <memory>
+#include <cstdlib>
 
 #include <cuda.h>
+
 
 namespace cusp {
 
@@ -12,11 +14,21 @@ namespace ktt {
 
 namespace detail {
 
-std::unique_ptr<::ktt::Tuner> tuner;
-bool is_enabled = true;
+inline std::unique_ptr<::ktt::Tuner> tuner;
+inline bool is_enabled = true;
 
-void lazy_init() {
 
+template<typename Format>
+::ktt::KernelId get_kernel_id() {
+    return 5;
+}
+
+
+inline void cleanup() {
+    tuner.reset();
+}
+
+inline void lazy_init() {
     if (is_enabled && !tuner) {
         CUdevice device;
         cuDeviceGet(&device, 0);
@@ -30,8 +42,11 @@ void lazy_init() {
         ::ktt::ComputeApiInitializer initializer(context, std::vector<::ktt::ComputeQueue>{stream});
 
         tuner = std::make_unique<::ktt::Tuner>(::ktt::ComputeApi::CUDA, initializer);
+
+        std::atexit(cleanup);
     }
 }
+
 
 } // namespace detail
 

@@ -44,6 +44,7 @@ if 'single_test' in env:
 this_file = inspect.currentframe().f_code.co_filename
 this_dir = os.path.dirname(this_file)
 env.Append(CPPPATH = [this_dir])
+env.Append(CPPDEFINES = [ ("CUSP_PATH", this_dir + "/../") ])
 
 tester = env.Program('tester', sources)
 

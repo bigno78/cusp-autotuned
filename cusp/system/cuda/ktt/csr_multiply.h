@@ -2,6 +2,24 @@
 
 #include <iostream>
 
+#include <cusp/ktt/detail/external/nameof.hpp>
+#include <cusp/ktt/detail/ktt.inl>
+#include <cusp/system/cuda/arch.h> // max_active_blocks
+
+#include <cusp/system/cuda/ktt/kernels/csr_kernel.h>
+
+namespace cusp::system::cuda::ktt {
+    ::ktt::KernelId get_kernel_id(::ktt::KernelDefinitionId id,  std::string kernel_name) {
+        static ::ktt::KernelId kernel = cusp::ktt::detail::tuner->CreateSimpleKernel(kernel_name, id);   
+        return kernel;
+    }
+}
+
+template<>
+::ktt::KernelId cusp::ktt::detail::get_kernel_id<cusp::csr_format>() {
+    return cusp::system::cuda::ktt::get_kernel_id(0, ""); 
+}
+
 namespace cusp {
 
 namespace system {
@@ -9,6 +27,9 @@ namespace system {
 namespace cuda {
 
 namespace ktt {
+
+#define STR(str) #str
+#define STRING(str) STR(str)
 
 template <typename DerivedPolicy,
           typename MatrixType,
@@ -28,94 +49,83 @@ void multiply(cuda::execution_policy<DerivedPolicy>& exec,
               cusp::array1d_format,
               cusp::array1d_format)
 {
+    static_assert( std::is_same_v<cusp::device_memory, typename MatrixType::memory_space>
+                   && std::is_same_v<cusp::device_memory, typename VectorType1::memory_space>
+                   && std::is_same_v<cusp::device_memory, typename VectorType2::memory_space>, 
+                   "All arguments must be in device memory." );
+
+    std::cout << "Hello from out thing\n";
+
+    // copied from csr_vector_spmv.h
+    typedef typename MatrixType::row_offsets_array_type::const_iterator     RowIterator;
+    typedef typename MatrixType::column_indices_array_type::const_iterator  ColumnIterator;
+    typedef typename MatrixType::values_array_type::const_iterator          ValueIterator1;
+
+    typedef typename VectorType1::const_iterator                            ValueIterator2;
+    typedef typename VectorType2::iterator                                  ValueIterator3;
+
     auto& tuner = *cusp::ktt::detail::tuner;
 
-    // const ::ktt::DimensionVector blockDimensions(32);
-    // const ::ktt::DimensionVector gridDimensions(1);
+    std::string path = STRING(CUSP_PATH) "/cusp/system/cuda/ktt/kernels/csr_kernel.h";
 
-    // std::vector<int> result(50, 0);
-
-    // std::string path = "/home/bigno/school/cusp-autotuned/cusp/system/cuda/ktt/kernels/csr_kernel.h";
-
-    // const ::ktt::KernelDefinitionId definition = tuner.AddKernelDefinitionFromFile("test_kernel", path, gridDimensions,
-    //     blockDimensions);
+    const size_t THREADS_PER_BLOCK  = 128;
+    const size_t THREADS_PER_VECTOR = 32;
+    const size_t VECTORS_PER_BLOCK  = THREADS_PER_BLOCK / THREADS_PER_VECTOR;
     
-    // const ::ktt::KernelId kernel = tuner.CreateSimpleKernel("Addition", definition);
+    std::vector< std::string > type_names {
+        std::string(NAMEOF_TYPE(typename MatrixType::index_type)),
+        std::string(NAMEOF_TYPE(typename MatrixType::value_type)),
+        std::string(NAMEOF_TYPE(typename VectorType1::value_type)),
+        std::string(NAMEOF_TYPE(typename VectorType2::value_type)),
+        std::to_string(VECTORS_PER_BLOCK),
+        std::to_string(THREADS_PER_VECTOR)
+    };
 
-    // auto arguemntId = tuner.AddArgumentScalar(5);
-    // auto outId = tuner.AddArgumentVector(result, ::ktt::ArgumentAccessType::WriteOnly);
+    
 
-    // tuner.SetArguments(definition, { arguemntId, outId });
+    // TODO: we probably wanna change this later
+    const size_t MAX_BLOCKS = cusp::system::cuda::detail::max_active_blocks(
+                                  ktt_csr_vector_kernel<typename MatrixType::index_type, typename MatrixType::value_type,
+                                  typename VectorType1::value_type, typename VectorType2::value_type,
+                                  VECTORS_PER_BLOCK, THREADS_PER_VECTOR>, THREADS_PER_BLOCK, (size_t) 0);
+    const size_t NUM_BLOCKS = std::min<size_t>(MAX_BLOCKS, DIVIDE_INTO(A.num_rows, VECTORS_PER_BLOCK));
 
-    // tuner.Run(kernel, {}, { ::ktt::BufferOutputDescriptor(outId, result.data()) });
+    const ::ktt::DimensionVector blockDimensions(THREADS_PER_BLOCK);
+    const ::ktt::DimensionVector gridDimensions(NUM_BLOCKS);
 
-    // // std::cout << result[0] << "\n";
+    ::ktt::KernelDefinitionId definition = tuner.GetKernelDefinitionId("ktt_csr_vector_kernel", type_names);
 
-    // Initialize device index and path to kernel.
-    ::ktt::DeviceIndex deviceIndex = 0;
-    std::string kernelFile = "/home/bigno/school/cusp-autotuned/cusp/system/cuda/ktt/kernels/csr_kernel.h";
-
-    // Declare kernel parameters and data variables.
-    const size_t numberOfElements = 1024 * 1024;
-    // Dimensions of block and grid are specified with DimensionVector. Only single dimension is utilized in this tutorial.
-    // In general, DimensionVector supports up to three dimensions.
-    const ::ktt::DimensionVector blockDimensions(256);
-    const ::ktt::DimensionVector gridDimensions(numberOfElements / blockDimensions.GetSizeX());
-
-    std::vector<float> a(numberOfElements);
-    std::vector<float> b(numberOfElements);
-    std::vector<float> result(numberOfElements, 0.0f);
-
-    // Initialize data
-    for (size_t i = 0; i < numberOfElements; ++i)
-    {
-        a[i] = static_cast<float>(i);
-        b[i] = static_cast<float>(i + 1);
+    if (definition == ::ktt::InvalidKernelDefinitionId) {
+        definition = tuner.AddKernelDefinitionFromFile(
+            "ktt_csr_vector_kernel", 
+            path, 
+            gridDimensions,
+            blockDimensions,
+            type_names);
     }
 
-    // Add new kernel definition. Specify kernel function name, path to source file, default grid dimensions and block dimensions.
-    // ::ktt returns handle to the newly added definition, which can be used to reference it in other API methods.
-    const ::ktt::KernelDefinitionId definition = tuner.AddKernelDefinitionFromFile("vectorAddition", kernelFile, gridDimensions,
-        blockDimensions);
+    ::ktt::KernelId kernel = get_kernel_id(definition, "CsrKernel");
 
-    // Add new kernel arguments to tuner. Argument data is copied from std::vector containers. Specify whether the arguments are
-    // used as input or output. ::ktt returns handle to the newly added argument, which can be used to reference it in other API
-    // methods. 
-    const ::ktt::ArgumentId aId = tuner.AddArgumentVector(a, ::ktt::ArgumentAccessType::ReadOnly);
-    const ::ktt::ArgumentId bId = tuner.AddArgumentVector(b, ::ktt::ArgumentAccessType::ReadOnly);
-    const ::ktt::ArgumentId resultId = tuner.AddArgumentVector(result, ::ktt::ArgumentAccessType::WriteOnly);
+    auto cast = [](auto* ptr) { return const_cast<void*>(static_cast<const void*>(ptr)); };
 
-    // Set arguments for the kernel definition. The order of argument ids must match the order of arguments inside corresponding
-    // CUDA kernel function.
-    tuner.SetArguments(definition, {aId, bId, resultId});
+    auto add_arg = [&] (auto& array, ::ktt::ArgumentAccessType access = ::ktt::ArgumentAccessType::ReadOnly) {
+        return tuner.AddArgumentVector(cast(array.data().get()),
+                                       array.size(),
+                                       sizeof(decltype(array.front())),
+                                       access,
+                                       ::ktt::ArgumentMemoryLocation::Device);
+    };
 
-    // Create simple kernel from the specified definition. Specify name which will be used during logging and output operations.
-    // In more complex scenarios, kernels can have multiple definitions. Definitions can be shared between multiple kernels.
-    const ::ktt::KernelId kernel = tuner.CreateSimpleKernel("Addition", definition);
+    auto num_rows_id = tuner.AddArgumentScalar(A.num_rows);
+    auto Ap_id = add_arg(A.row_offsets); 
+    auto Aj_id = add_arg(A.column_indices);
+    auto Ax_id = add_arg(A.values);
+    auto x_id = add_arg(x);
+    auto y_id = add_arg(y, ::ktt::ArgumentAccessType::ReadWrite);
 
-    // Set time unit used during printing of kernel duration. The default time unit is milliseconds, but since computation in
-    // this tutorial is very short, microseconds are used instead.
-    tuner.SetTimeUnit(::ktt::TimeUnit::Microseconds);
+    tuner.SetArguments(definition, { num_rows_id, Ap_id, Aj_id, Ax_id, x_id, y_id });
 
-    // Run the specified kernel. The second argument is related to kernel tuning and will be described in further tutorials.
-    // In this case, it remains empty. The third argument is used to retrieve the kernel output. For each kernel argument that
-    // is retrieved, one BufferOutputDescriptor must be specified. Each of these descriptors contains id of the retrieved argument
-    // and memory location where the argument data will be stored. Optionally, it can also include number of bytes to be retrieved,
-    // if only a part of the argument is needed. Here, the data is stored back into result buffer which was created earlier. Note
-    // that the memory location size needs to be equal or greater than the retrieved argument size.
-    tuner.Run(kernel, {}, {::ktt::BufferOutputDescriptor(resultId, result.data())});
-
-    // Print first ten elements from the result to check they were computed correctly.
-    std::cout << "Printing the first 10 elements from result: ";
-
-    for (size_t i = 0; i < 10; ++i)
-    {
-        std::cout << result[i] << " ";
-    }
-
-    std::cout << std::endl;
-
-    //cusp::ktt::detail::tuner.reset();
+    tuner.Run(kernel, {}, {});
 }
 
 }

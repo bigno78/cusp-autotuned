@@ -243,12 +243,32 @@ def getLINKFLAGS(mode, backend, hostspblas, LINK):
     return result
 
 
+def addKTT(env):
+    ktt_path = None
+
+    if 'ktt_path' in env:
+        ktt_path = env['ktt_path']
+    elif 'ktt_path' in os.environ:
+        ktt_path = os.environ['ktt_path']
+
+    env.Append(LIBS = [ "ktt" ])
+
+    if ktt_path is not None:
+        env.Append(LIBPATH = [ ktt_path + os.sep + "Build" + os.sep + "x86_64_Debug" ])
+        env.Append(CPPPATH = [ ktt_path + os.sep + "Source" ])
+    else:
+        print("ERROR: No ktt_path specified.")
+        exit(1)
+
+
 def Environment(buildDir):
     # allow the user discretion to choose the MSVC version
     vars = Variables()
     if os.name == 'nt':
         vars.Add(EnumVariable('MSVC_VERSION', 'MS Visual C++ version',
                  None, allowed_values=('8.0', '9.0', '10.0')))
+
+    vars.Add('ktt_path', help='The path to the root of KTT library')
 
     # add a variable to handle the device backend
     compiler_variable = EnumVariable('compiler', 'The compiler to use', 'nvcc',
@@ -351,7 +371,7 @@ def Environment(buildDir):
         env.Append(LIBPATH=[cuda_lib_path])
         env.Append(CPPPATH=[cuda_inc_path])
 
-        env.Append(LIBS=['cudart'])
+        env.Append(LIBS=['cudart', 'cuda'])
 
     else:
         env.Append(NVCCFLAGS = ["-x", "c++"])
@@ -414,6 +434,7 @@ def Environment(buildDir):
     # set thrust include path
     # this needs to come before the CUDA include path appended above,
     # which may include a different version of thrust
+    print(buildDir)
     env.Prepend(CPPPATH=os.path.dirname(buildDir))
 
     if 'THRUST_PATH' in os.environ:
@@ -427,6 +448,8 @@ def Environment(buildDir):
             env['ENV']['DYLD_LIBRARY_PATH'] = os.environ['DYLD_LIBRARY_PATH']
         elif 'LD_LIBRARY_PATH' in os.environ:
             env['ENV']['LD_LIBRARY_PATH'] = os.environ['LD_LIBRARY_PATH']
+    
+    addKTT(env)
 
     # generate help text
     Help(vars.GenerateHelpText(env))
