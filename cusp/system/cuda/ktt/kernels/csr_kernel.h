@@ -1,4 +1,11 @@
 
+__device__ int fib(int n) {
+    if (n < 2) {
+        return n;
+    }
+    return fib(n-1) + fib(n-2);
+}
+
 template <typename IndexType,
           typename ValueType1,
           typename ValueType2,
@@ -13,6 +20,17 @@ ktt_csr_vector_kernel(const unsigned int num_rows,
                        const ValueType2*  x,
                        ValueType3*        y)
 {
+
+#if TEST_PARAM == 0
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+        printf("Test param is 0.\n");
+    }
+#else
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+        printf("Fib of 20 is %d.\n", fib(20));
+    }
+#endif
+
     typedef ValueType1 ValueType;
 
     __shared__ volatile ValueType sdata[VECTORS_PER_BLOCK * THREADS_PER_VECTOR + THREADS_PER_VECTOR / 2];  // padded to avoid reduction conditionals
@@ -37,7 +55,7 @@ ktt_csr_vector_kernel(const unsigned int num_rows,
         const IndexType row_end   = ptrs[vector_lane][1];                   //same as: row_end   = Ap[row+1];
 
         // initialize local sum
-        ValueType sum = (thread_lane == 0) ? y[row] : ValueType(0);
+        ValueType sum = (thread_lane == 0) ? ValueType(0) : ValueType(0);
 
         if (THREADS_PER_VECTOR == 32 && row_end - row_start > 32)
         {

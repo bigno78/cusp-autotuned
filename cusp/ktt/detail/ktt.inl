@@ -19,9 +19,7 @@ inline bool is_enabled = true;
 
 
 template<typename Format>
-::ktt::KernelId get_kernel_id() {
-    return 5;
-}
+::ktt::KernelId get_kernel_id();
 
 
 inline void cleanup() {
@@ -49,6 +47,12 @@ inline void lazy_init() {
 
 
 } // namespace detail
+
+template<typename Matrix>
+void reset_tuning(const Matrix& matrix) {
+    auto id = detail::get_kernel_id<typename Matrix::format>();
+    detail::tuner->ClearData(id);
+}
 
 } // namespace ktt
 

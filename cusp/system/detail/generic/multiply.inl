@@ -107,6 +107,46 @@ multiply(thrust::execution_policy<DerivedPolicy> &exec,
     cusp::multiply(exec, A, B, C, initialize, combine, reduce);
 }
 
+template <typename T, typename /*U*/ = void>
+struct has_rebind : std::false_type {};
+ 
+template <typename T>
+struct has_rebind<T, std::void_t<typename T::rebind<int>>> : std::true_type {};
+
+template<typename T>
+constexpr bool has_rebind_v = has_rebind<T>::value;
+
+template <typename DerivedPolicy,
+         typename LinearOperator,
+         typename ValueType1,
+         typename MemorySpace1,
+         typename ValueType2,
+         typename MemorySpace2>
+typename thrust::detail::disable_if_convertible<typename LinearOperator::format,cusp::unknown_format>::type
+multiply(cusp::system::cuda::detail::execution_policy<DerivedPolicy> &exec,
+         const LinearOperator&  A,
+         const cusp::array1d<ValueType1, MemorySpace1>& B,
+         cusp::array1d<ValueType2, MemorySpace2>& C)
+{
+    typedef typename LinearOperator::format  MatrixFormat;
+
+    if constexpr ((cusp::detail::is_csr<LinearOperator>::value || cusp::detail::is_dia<LinearOperator>::value) && has_rebind_v<LinearOperator>) {
+        cusp::ktt::detail::lazy_init();
+        if (cusp::ktt::detail::is_enabled) {
+            cusp::system::cuda::ktt::multiply(exec, A, B, C, MatrixFormat{});
+            return;    
+        }
+    }
+
+    typedef typename LinearOperator::value_type ValueType;
+
+    cusp::constant_functor<ValueType> initialize(0);
+    thrust::multiplies<ValueType> combine;
+    thrust::plus<ValueType> reduce;
+
+    cusp::multiply(exec, A, B, C, initialize, combine, reduce);
+}
+
 template <typename DerivedPolicy,
          typename LinearOperator,
          typename MatrixOrVector1,
@@ -130,61 +170,6 @@ multiply(thrust::execution_policy<DerivedPolicy> &exec,
     Format1 format1;
     Format2 format2;
     Format3 format3;
-
-    multiply(thrust::detail::derived_cast(exec), A, B, C, initialize, combine, reduce, format1, format2, format3);
-}
-
-
-template <typename T, typename /*U*/ = void>
-struct has_rebind : std::false_type {};
- 
-template <typename T>
-struct has_rebind<T, std::void_t<typename T::rebind<int>>> : std::true_type {};
-
-template<typename T>
-constexpr bool has_rebind_v = has_rebind<T>::value;
-
-template <typename DerivedPolicy,
-         typename LinearOperator,
-         typename ValueType1,
-         typename MemorySpace1,
-         typename ValueType2,
-         typename MemorySpace2,
-         typename UnaryFunction,
-         typename BinaryFunction1,
-         typename BinaryFunction2>
-/*typename enable_if<
-    thrust::detail::and_<
-        thrust::detail::not_<thrust::detail::is_convertible<typename LinearOperator::format, cusp::unknown_format>>,
-        thrust::
-        has_member_operator_exec<DerivedPolicy,LinearOperator,MatrixOrVector1,MatrixOrVector2>,
-        thrust::detail::is_convertible<typename LinearOperator::format,cusp::unknown_format>
-    >::value
->::type*/
-typename thrust::detail::disable_if_convertible<UnaryFunction, cusp::known_format>::type
-multiply(cusp::system::cuda::detail::execution_policy<DerivedPolicy> &exec,
-         const LinearOperator&  A,
-         const cusp::array1d<ValueType1, MemorySpace1>& B,
-         cusp::array1d<ValueType2, MemorySpace2>& C,
-         UnaryFunction   initialize,
-         BinaryFunction1 combine,
-         BinaryFunction2 reduce)
-{
-    typedef typename LinearOperator::format  Format1;
-    typedef cusp::array1d_format Format2;
-    typedef cusp::array1d_format Format3;
-
-    Format1 format1;
-    Format2 format2;
-    Format3 format3;
-
-    if constexpr (cusp::detail::is_csr<LinearOperator>::value && has_rebind_v<LinearOperator>) {
-        cusp::ktt::detail::lazy_init();
-        if (cusp::ktt::detail::is_enabled) {
-            cusp::system::cuda::ktt::multiply(exec, A, B, C, initialize, combine, reduce, format1, format2, format3);
-            return;    
-        }
-    }
 
     multiply(thrust::detail::derived_cast(exec), A, B, C, initialize, combine, reduce, format1, format2, format3);
 }

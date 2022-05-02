@@ -4,7 +4,8 @@ namespace cusp {
 
 namespace ktt {
 
-
+template<typename Matrix>
+void reset_tuning(const Matrix& matrix);
 
 } // namespace ktt
 
