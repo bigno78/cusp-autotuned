@@ -27,7 +27,7 @@ template<typename Array>
                                     access,
                                     ::ktt::ArgumentMemoryLocation::Device);
     if (id == ::ktt::InvalidArgumentId) {
-        std::cout << "ERROR: Adding argument failed and I don't know why\n";
+        std::cerr << "ERROR: Adding argument failed and I don't know why\n";
     }
     return id;
 }
