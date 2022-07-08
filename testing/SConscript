@@ -1,5 +1,8 @@
+from distutils.command.build import build
 import os
 import inspect
+import stat
+from venv import create
 import SCons
 
 # try to import an environment first
@@ -44,9 +47,30 @@ if 'single_test' in env:
 this_file = inspect.currentframe().f_code.co_filename
 this_dir = os.path.dirname(this_file)
 env.Append(CPPPATH = [this_dir])
-env.Append(CPPDEFINES = [ ("CUSP_PATH", this_dir + "/../") ])
+env.Append(CPPDEFINES = [ ("CUSP_PATH", os.path.abspath(this_dir + os.sep + "..")) ])
 
 tester = env.Program('tester', sources)
+
+tester_path = tester[0].abspath
+build_dir = os.path.dirname(tester[0].path)
+
+def create_run_script(target=None, source=None, env=None):
+  filename = build_dir + os.sep + "run_tests" 
+
+  with open(build_dir + os.sep + "run_tests", "w") as f:
+    f.write(
+      '#!/bin/bash\n'
+      f'LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{env["ktt_lib_path"]} {tester_path} "$@"\n'
+    )
+  
+  # give the user executable permissions while preserving all the other ones
+  st = os.stat(filename)
+  os.chmod(filename, st.st_mode | stat.S_IEXEC)
+
+  return 0
+
+if os.name == "posix":
+  AddPostAction(tester, create_run_script)
 
 # invoke trivial_tests SConscript
 if ('tests' not in env) and ('single_test' not in env) and (env['PLATFORM'] != 'win32' and env['PLATFORM'] != 'win64'):
