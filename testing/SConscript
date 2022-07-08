@@ -34,7 +34,7 @@ if 'tests' in env:
   filtered_sources  = []
 
   for f in sources:
-    if str(f) in necessary_sources or pattern.search(f.get_contents()):
+    if str(f) in necessary_sources or pattern.search(f.get_contents().decode()):
       filtered_sources.append(f)
 
   sources = filtered_sources

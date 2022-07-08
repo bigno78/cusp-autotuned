@@ -1,5 +1,5 @@
 
-__device__ int fib(int n) {
+inline __device__ int fib(int n) {
     if (n < 2) {
         return n;
     }
