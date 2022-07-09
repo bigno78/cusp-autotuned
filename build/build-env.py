@@ -277,6 +277,7 @@ def addKTT(env):
         exit(1)
     env['ktt_lib_path'] = ktt_lib_path
     env.Append(LIBPATH = [ ktt_lib_path ])
+    env.Append(RPATH = [ ktt_lib_path ])
 
 
 def Environment(buildDir):
