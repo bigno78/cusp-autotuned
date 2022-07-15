@@ -40,6 +40,9 @@ inline void lazy_init() {
         ::ktt::ComputeApiInitializer initializer(context, std::vector<::ktt::ComputeQueue>{stream});
 
         tuner = std::make_unique<::ktt::Tuner>(::ktt::ComputeApi::CUDA, initializer);
+#ifdef KTT_LINE_INFO
+        tuner->SetCompilerOptions("-lineinfo");
+#endif
 
         std::atexit(cleanup);
     }

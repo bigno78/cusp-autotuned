@@ -1,6 +1,8 @@
-nvcc -DCUSP_PATH='/home/bigno/school/cusp-autotuned' -I. -I../KTT/Source -lcuda -lktt -O3 \
-     -L ../KTT/Build/x86_64_Debug/ --linker-options=-rpath,$(realpath ../KTT/Build/x86_64_Debug/) \
-     -std=c++17 -g -lineinfo main.cu
+nvcc -DCUSP_PATH=$(realpath .) \
+     -I . -I ../KTT/Source \
+     -l cuda -l ktt -L ../KTT/Build/x86_64_Debug/ \
+     --linker-options=-rpath,$(realpath ../KTT/Build/x86_64_Debug/) \
+     -std=c++17 -g -O3 -lineinfo -DKTT_LINE_INFO main.cu
 
 [ "$?" -eq "0" ] || exit 1
 
