@@ -43,8 +43,8 @@ if 'single_test' in env:
 # add the directory containing this file to the include path
 this_file = inspect.currentframe().f_code.co_filename
 this_dir = os.path.dirname(this_file)
-env.Append(CPPPATH = [this_dir])
-env.Append(CPPDEFINES = [ ("CUSP_PATH", os.path.abspath(this_dir + os.sep + "..")) ])
+env.Append(CPPPATH = [ this_dir ])
+env.Append(CPPDEFINES = [ ("CUSP_PATH", os.path.abspath(os.path.join(this_dir, ".."))) ])
 
 tester = env.Program('tester', sources)
 

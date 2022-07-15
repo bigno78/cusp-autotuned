@@ -260,24 +260,22 @@ def addKTT(env):
         )
         exit(1)
 
-    env.Append(LIBS = [ "ktt" ])
-
     ktt_path = os.path.abspath(ktt_path)
 
-    ktt_inlude_path = ktt_path + os.sep + "Source"
+    ktt_inlude_path = os.path.join(ktt_path, "Source")
     if not os.path.exists(ktt_inlude_path):
         print(f"Error: The path '{ktt_inlude_path}' does not exist. Is the ktt_path correct?")
         exit(1)
-    env.Append(CPPPATH = [ ktt_path + os.sep + "Source" ])
+    env.Append(CPPPATH = [ ktt_inlude_path ])
 
-    lib_dir_name = "Build" + os.sep + "x86_64_" + ("Release" if env['mode'] == "release" else 'Debug')
-    ktt_lib_path = ktt_path + os.sep + lib_dir_name
+    lib_dir_name = "x86_64_" + ("Release" if env['mode'] == "release" else 'Debug')
+    ktt_lib_path = os.path.join(ktt_path, "Build", lib_dir_name)
     if not os.path.exists(ktt_lib_path):
         print(f"Error: The path '{ktt_lib_path}' does not exist. Make sure that KTT was built in {env['mode']} mode.")
         exit(1)
-    env['ktt_lib_path'] = ktt_lib_path
     env.Append(LIBPATH = [ ktt_lib_path ])
     env.Append(RPATH = [ ktt_lib_path ])
+    env.Append(LIBS = [ "ktt" ])
 
 
 def Environment(buildDir):
