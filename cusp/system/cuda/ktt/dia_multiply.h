@@ -9,14 +9,14 @@
 #include <cusp/system/cuda/ktt/kernels/dia_kernel.h>
 
 namespace cusp::system::cuda::ktt::dia {
-    ::ktt::KernelId get_kernel_id(::ktt::KernelDefinitionId id,  std::string kernel_name) {
+    inline ::ktt::KernelId get_kernel_id(::ktt::KernelDefinitionId id,  std::string kernel_name) {
         static ::ktt::KernelId kernel = cusp::ktt::detail::tuner->CreateSimpleKernel(kernel_name, id);
         return kernel;
     }
 }
 
 template<>
-::ktt::KernelId cusp::ktt::detail::get_kernel_id<cusp::dia_format>() {
+inline ::ktt::KernelId cusp::ktt::detail::get_kernel_id<cusp::dia_format>() {
     return cusp::system::cuda::ktt::dia::get_kernel_id(0, ""); 
 }
 
@@ -30,7 +30,7 @@ namespace ktt {
 
 namespace dia {
 
-void setup_tuning_parameters(::ktt::Tuner& tuner, ::ktt::KernelId kernel) {
+inline void setup_tuning_parameters(::ktt::Tuner& tuner, ::ktt::KernelId kernel) {
     tuner.AddParameter(kernel, "TEST_PARAM", std::vector<uint64_t>{0, 1, 2});
 }
 

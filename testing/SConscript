@@ -31,7 +31,7 @@ if 'tests' in env:
   filtered_sources  = []
 
   for f in sources:
-    if str(f) in necessary_sources or pattern.search(f.get_contents()):
+    if str(f) in necessary_sources or pattern.search(f.get_contents().decode()):
       filtered_sources.append(f)
 
   sources = filtered_sources
@@ -43,8 +43,8 @@ if 'single_test' in env:
 # add the directory containing this file to the include path
 this_file = inspect.currentframe().f_code.co_filename
 this_dir = os.path.dirname(this_file)
-env.Append(CPPPATH = [this_dir])
-env.Append(CPPDEFINES = [ ("CUSP_PATH", this_dir + "/../") ])
+env.Append(CPPPATH = [ this_dir ])
+env.Append(CPPDEFINES = [ ("CUSP_PATH", os.path.abspath(os.path.join(this_dir, ".."))) ])
 
 tester = env.Program('tester', sources)
 

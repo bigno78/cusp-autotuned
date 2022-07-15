@@ -250,15 +250,32 @@ def addKTT(env):
         ktt_path = env['ktt_path']
     elif 'ktt_path' in os.environ:
         ktt_path = os.environ['ktt_path']
+    elif 'KTT_PATH' in os.environ:
+        ktt_path = os.environ['KTT_PATH']
 
-    env.Append(LIBS = [ "ktt" ])
-
-    if ktt_path is not None:
-        env.Append(LIBPATH = [ ktt_path + os.sep + "Build" + os.sep + "x86_64_Debug" ])
-        env.Append(CPPPATH = [ ktt_path + os.sep + "Source" ])
-    else:
-        print("ERROR: No ktt_path specified.")
+    if ktt_path is None:
+        print(
+            "ERROR: No ktt_path specified. Provide the path to the root of KTT library repository as exported enviroment variable 'ktt_path' "
+            "or on the command-line as 'scons ktt_path=<path to KTT>'"
+        )
         exit(1)
+
+    ktt_path = os.path.abspath(ktt_path)
+
+    ktt_inlude_path = os.path.join(ktt_path, "Source")
+    if not os.path.exists(ktt_inlude_path):
+        print(f"Error: The path '{ktt_inlude_path}' does not exist. Is the ktt_path correct?")
+        exit(1)
+    env.Append(CPPPATH = [ ktt_inlude_path ])
+
+    lib_dir_name = "x86_64_" + ("Release" if env['mode'] == "release" else 'Debug')
+    ktt_lib_path = os.path.join(ktt_path, "Build", lib_dir_name)
+    if not os.path.exists(ktt_lib_path):
+        print(f"Error: The path '{ktt_lib_path}' does not exist. Make sure that KTT was built in {env['mode']} mode.")
+        exit(1)
+    env.Append(LIBPATH = [ ktt_lib_path ])
+    env.Append(RPATH = [ ktt_lib_path ])
+    env.Append(LIBS = [ "ktt" ])
 
 
 def Environment(buildDir):
@@ -268,7 +285,8 @@ def Environment(buildDir):
         vars.Add(EnumVariable('MSVC_VERSION', 'MS Visual C++ version',
                  None, allowed_values=('8.0', '9.0', '10.0')))
 
-    vars.Add('ktt_path', help='The path to the root of KTT library')
+    pv = PathVariable('ktt_path', default=None, help='The path to the root of KTT library repository')
+    vars.Add(pv)
 
     # add a variable to handle the device backend
     compiler_variable = EnumVariable('compiler', 'The compiler to use', 'nvcc',
@@ -434,7 +452,6 @@ def Environment(buildDir):
     # set thrust include path
     # this needs to come before the CUDA include path appended above,
     # which may include a different version of thrust
-    print(buildDir)
     env.Prepend(CPPPATH=os.path.dirname(buildDir))
 
     if 'THRUST_PATH' in os.environ:
