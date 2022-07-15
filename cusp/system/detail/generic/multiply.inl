@@ -119,21 +119,19 @@ constexpr bool has_rebind_v = has_rebind<T>::value;
 template <typename DerivedPolicy,
          typename LinearOperator,
          typename ValueType1,
-         typename MemorySpace1,
-         typename ValueType2,
-         typename MemorySpace2>
+         typename ValueType2>
 typename thrust::detail::disable_if_convertible<typename LinearOperator::format,cusp::unknown_format>::type
 multiply(cusp::system::cuda::detail::execution_policy<DerivedPolicy> &exec,
          const LinearOperator&  A,
-         const cusp::array1d<ValueType1, MemorySpace1>& B,
-         cusp::array1d<ValueType2, MemorySpace2>& C)
+         const cusp::array1d<ValueType1, cusp::device_memory>& B,
+         cusp::array1d<ValueType2, cusp::device_memory>& C)
 {
     typedef typename LinearOperator::format  MatrixFormat;
 
     if constexpr ((cusp::detail::is_csr<LinearOperator>::value || cusp::detail::is_dia<LinearOperator>::value) && has_rebind_v<LinearOperator>) {
-        cusp::ktt::detail::lazy_init();
         if (cusp::ktt::detail::is_enabled) {
-            cusp::system::cuda::ktt::multiply(exec, A, B, C, MatrixFormat{});
+            cusp::ktt::detail::lazy_init();
+            cusp::system::cuda::ktt::multiply(*cusp::ktt::detail::tuner, A, B, C, MatrixFormat{});
             return;    
         }
     }
