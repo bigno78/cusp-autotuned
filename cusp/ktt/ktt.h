@@ -8,6 +8,12 @@ namespace cusp {
 
 namespace ktt {
 
+inline void disable();
+
+inline void enable();
+
+inline ::ktt::Tuner& get_tuner();
+
 /**
  * @brief Perform the multiplication y = A*x using an autotuned kernel.
  * 
@@ -22,30 +28,30 @@ namespace ktt {
 template <typename Matrix,
           typename ValueType1,
           typename ValueType2>
-void multiply(const Matrix& A,
-              const cusp::array1d<ValueType1, cusp::device_memory>& x,
-              cusp::array1d<ValueType2, cusp::device_memory>& y);
+::ktt::KernelResult multiply(const Matrix& A,
+                             const cusp::array1d<ValueType1, cusp::device_memory>& x,
+                             cusp::array1d<ValueType2, cusp::device_memory>& y);
 
 // NOTE: Should we have this?
-// /**
-//  * @brief Perform the multiplication y = A*x without autotuning,
-//  * instead just run the kernel with the given configuration.
-//  * 
-//  * @tparam Matrix      The type of the sparse matrix to use.
-//  * @tparam ValueType1  The value type of the x vector.
-//  * @tparam ValueType2  The value type of the y vector.
-//  * 
-//  * @param A The matrix.
-//  * @param x The input vector.
-//  * @param y The output vector.
-//  */
-// template <typename Matrix,
-//           typename ValueType1,
-//           typename ValueType2>
-// void multiply(const Matrix& A,
-//               const cusp::array1d<ValueType1, cusp::device_memory>& x,
-//               cusp::array1d<ValueType2, cusp::device_memory>& y,
-//               const ::ktt::KernelConfiguration& configuration);
+/**
+ * @brief Perform the multiplication y = A*x without autotuning,
+ * instead just run the kernel in the given configuration.
+ * 
+ * @tparam Matrix      The type of the sparse matrix to use.
+ * @tparam ValueType1  The value type of the x vector.
+ * @tparam ValueType2  The value type of the y vector.
+ * 
+ * @param A The matrix.
+ * @param x The input vector.
+ * @param y The output vector.
+ */
+template <typename Matrix,
+          typename ValueType1,
+          typename ValueType2>
+void multiply(const Matrix& A,
+              const cusp::array1d<ValueType1, cusp::device_memory>& x,
+              cusp::array1d<ValueType2, cusp::device_memory>& y,
+              const ::ktt::KernelConfiguration& configuration);
 
 /**
  * TODO: Add some documentation.

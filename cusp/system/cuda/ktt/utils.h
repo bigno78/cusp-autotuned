@@ -21,42 +21,47 @@ void* cast(const T* ptr)
 }
 
 template<typename T>
-void add_arg(::ktt::Tuner& tuner, std::vector<::ktt::ArgumentId>& argument_ids, T scalar)
+::ktt::ArgumentId add_arg(::ktt::Tuner& tuner, T scalar)
 {
     auto id = tuner.AddArgumentScalar(scalar);
     if (id == ::ktt::InvalidArgumentId) {
         std::cerr << "ERROR: Adding scalar argument failed and I don't know why\n";
     }
-    argument_ids.push_back(id);
+    return id;
 }
 
 template<typename T>
-void add_arg(::ktt::Tuner& tuner,
-             std::vector<::ktt::ArgumentId>& argument_ids,
+::ktt::ArgumentId add_arg(::ktt::Tuner& tuner,
              const cusp::array1d<T, cusp::device_memory>& array)
 {
     auto id = tuner.AddArgumentVector<T>(cast(array.data().get()),
-                                         array.size(),
+                                         array.size() * sizeof(T),
                                          ::ktt::ArgumentAccessType::ReadOnly,
                                          ::ktt::ArgumentMemoryLocation::Device);
     if (id == ::ktt::InvalidArgumentId) {
         std::cerr << "ERROR: Adding const array argument failed and I don't know why\n";
     }
-    argument_ids.push_back(id);
+    return id;
 }
 
 template<typename T>
-void add_arg(::ktt::Tuner& tuner,
-             std::vector<::ktt::ArgumentId>& argument_ids,
+::ktt::ArgumentId add_arg(::ktt::Tuner& tuner,
              cusp::array1d<T, cusp::device_memory>& array)
 {
     auto id = tuner.AddArgumentVector<T>(cast(array.data().get()),
-                                         array.size(),
+                                         array.size() * sizeof(T),
                                          ::ktt::ArgumentAccessType::ReadWrite,
                                          ::ktt::ArgumentMemoryLocation::Device);
     if (id == ::ktt::InvalidArgumentId) {
         std::cerr << "ERROR: Adding non-const array argument failed and I don't know why\n";
     }
+    return id;
+}
+
+template<typename T>
+void add_arg(::ktt::Tuner& tuner, std::vector<::ktt::ArgumentId>& argument_ids, T&& arg)
+{
+    auto id = add_arg(tuner, std::forward<T>(arg));
     argument_ids.push_back(id);
 }
 
@@ -64,16 +69,19 @@ template<typename... Args>
 std::vector<::ktt::ArgumentId> add_arguments(::ktt::Tuner& tuner, Args&&... args)
 {
     std::vector<::ktt::ArgumentId> argument_ids;
-    ( add_arg(tuner, argument_ids, args), ... );
+    ( add_arg(tuner, argument_ids, std::forward<Args>(args)), ... );
     return argument_ids;
 }
 
-void remove_arguments(const kernel_context& kernel, const std::vector<::ktt::ArgumentId>& args)
+inline void remove_arguments(const kernel_context& kernel, const std::vector<::ktt::ArgumentId>& args)
 {
-    kernel.tuner->SetArguments(kernel.definition_id, {});
+    for (auto id : kernel.definition_ids) {
+        kernel.tuner->SetArguments(id, {});
+    }
+
     for (auto arg : args) {
         kernel.tuner->RemoveArgument(arg);
-    }   
+    }
 }
 
 

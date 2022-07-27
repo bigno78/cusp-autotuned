@@ -51,15 +51,16 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner, cusp::dia_format)
     const ::ktt::DimensionVector blockDimensions(BLOCK_SIZE);
     const ::ktt::DimensionVector gridDimensions(MAX_BLOCKS);
 
-    kernel.definition_id = tuner.AddKernelDefinitionFromFile(
+    auto definition_id = tuner.AddKernelDefinitionFromFile(
         "ktt_dia_vector_kernel", 
         kernel_path, 
         gridDimensions,
         blockDimensions,
         type_names
     );
-    kernel.kernel_id = tuner.CreateSimpleKernel("DiaKernel", kernel.definition_id);
-    
+    kernel.definition_ids.push_back(definition_id);
+    kernel.kernel_id = tuner.CreateSimpleKernel("DiaKernel", definition_id);
+
     dia::setup_tuning_parameters(tuner, kernel);
 
     return kernel;
@@ -69,7 +70,7 @@ template<typename IndexType,
          typename ValueType1,
          typename ValueType2,
          typename ValueType3>
-kernel_context get_kernel(::ktt::Tuner& tuner, cusp::dia_format format)
+const kernel_context& get_kernel(::ktt::Tuner& tuner, cusp::dia_format format)
 {
     static kernel_context kernel = initialize_kernel<IndexType, ValueType1, ValueType2, ValueType3>(tuner, format);
     return kernel;
@@ -83,37 +84,70 @@ std::vector<::ktt::ArgumentId> add_arguments(
                                     const kernel_context& kernel,
                                     const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
                                     const cusp::array1d<ValueType2, cusp::device_memory>& x,
-                                    cusp::array1d<ValueType3, cusp::device_memory>& y,
-                                    cusp::dia_format format)
+                                    cusp::array1d<ValueType3, cusp::device_memory>& y)
 {
     const IndexType num_diagonals = A.values.num_cols;
     const IndexType pitch = A.values.pitch; // length of one diagonal + possible padding
 
     auto args = add_arguments(*kernel.tuner, A.num_rows, A.num_cols, num_diagonals, pitch, A.diagonal_offsets, A.values.values, x, y);
-    kernel.tuner->SetArguments(kernel.definition_id, args); 
+    kernel.tuner->SetArguments(kernel.definition_ids[0], args);
 
     return args;
+}
+
+
+// Returns the argument id of the y vector given a vector of arguments returned by a previous
+// call of `add_arguments`.
+inline ::ktt::ArgumentId get_output_argument(const std::vector<::ktt::ArgumentId>& arguments, cusp::dia_format) {
+    return arguments[7];
 }
 
 template <typename IndexType,
           typename ValueType1,
           typename ValueType2,
           typename ValueType3>
-void multiply(::ktt::Tuner& tuner,
+::ktt::KernelResult multiply(::ktt::Tuner& tuner,
               const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
               const cusp::array1d<ValueType2, cusp::device_memory>& x,
-              cusp::array1d<ValueType3, cusp::device_memory>& y,
-              cusp::dia_format format)
+              cusp::array1d<ValueType3, cusp::device_memory>& y)
 {
     if (A.num_entries == 0) {
         thrust::fill(y.begin(), y.end(), ValueType3(0));
-        return;
+        ::ktt::KernelResult result("DiaKernel", {});
+        result.SetStatus(::ktt::ResultStatus::Ok);
+        return result;
     }
     
-    kernel_context kernel = get_kernel<IndexType, ValueType1, ValueType2, ValueType3>(tuner, format);
-    auto args = add_arguments(kernel, A, x, y, format);
-    tuner.TuneIteration(kernel.kernel_id, {});
+    const kernel_context& kernel = get_kernel<IndexType, ValueType1, ValueType2, ValueType3>(tuner, cusp::dia_format{});
+    auto args = add_arguments(kernel, A, x, y);
+    auto res = tuner.TuneIteration(kernel.kernel_id, {});
     remove_arguments(kernel, args);
+    return res;
+}
+
+template <typename IndexType,
+          typename ValueType1,
+          typename ValueType2,
+          typename ValueType3>
+::ktt::KernelResult multiply(::ktt::Tuner& tuner,
+              const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
+              const cusp::array1d<ValueType2, cusp::device_memory>& x,
+              cusp::array1d<ValueType3, cusp::device_memory>& y,
+              const ::ktt::KernelConfiguration& configuration)
+{
+    if (A.num_entries == 0) {
+        thrust::fill(y.begin(), y.end(), ValueType3(0));
+        ::ktt::KernelResult result("DiaKernel", {});
+        result.SetStatus(::ktt::ResultStatus::Ok);
+        return result;
+    }
+    
+    kernel_context kernel = get_kernel<IndexType, ValueType1, ValueType2, ValueType3>(tuner, cusp::dia_format{});
+    auto args = add_arguments(kernel, A, x, y);
+    auto result = tuner.Run(kernel.kernel_id, configuration, {});
+    remove_arguments(kernel, args);
+
+    return result;
 }
 
 } // namespace ktt
