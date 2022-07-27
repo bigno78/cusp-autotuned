@@ -96,6 +96,7 @@ void multiply(const Matrix& A,
 {
     using Format = typename Matrix::format;
 
+    detail::lazy_init();
     cusp::system::cuda::ktt::multiply(*detail::tuner, A, x, y, configuration);
 }
 
