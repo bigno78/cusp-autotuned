@@ -1,7 +1,5 @@
 #pragma once
 
-#include <iostream>
-
 #include <cusp/ktt/detail/external/nameof.hpp>
 #include <cusp/system/cuda/arch.h> // max_active_blocks
 
@@ -9,6 +7,8 @@
 #include <cusp/system/cuda/ktt/kernel.h>
 #include <cusp/system/cuda/ktt/utils.h>
 
+#include <optional>
+#include <iostream>
 
 namespace cusp {
 
@@ -126,9 +126,9 @@ template <typename IndexType,
           typename ValueType2,
           typename ValueType3>
 ::ktt::KernelResult multiply(::ktt::Tuner& tuner,
-              const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
-              const cusp::array1d<ValueType2, cusp::device_memory>& x,
-              cusp::array1d<ValueType3, cusp::device_memory>& y)
+                             const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
+                             const cusp::array1d<ValueType2, cusp::device_memory>& x,
+                             cusp::array1d<ValueType3, cusp::device_memory>& y)
 {
     if (A.num_entries == 0) {
         thrust::fill(y.begin(), y.end(), ValueType3(0));
@@ -153,11 +153,11 @@ template <typename IndexType,
           typename ValueType2,
           typename ValueType3>
 ::ktt::KernelResult multiply(::ktt::Tuner& tuner,
-              const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
-              const cusp::array1d<ValueType2, cusp::device_memory>& x,
-              cusp::array1d<ValueType3, cusp::device_memory>& y,
-              const ::ktt::KernelConfiguration& configuration,
-              bool run_with_profiling = false)
+                             const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
+                             const cusp::array1d<ValueType2, cusp::device_memory>& x,
+                             cusp::array1d<ValueType3, cusp::device_memory>& y,
+                             const ::ktt::KernelConfiguration& configuration,
+                             bool run_with_profiling = false)
 {
     if (A.num_entries == 0) {
         thrust::fill(y.begin(), y.end(), ValueType3(0));
@@ -175,6 +175,43 @@ template <typename IndexType,
     remove_arguments(kernel, args);
 
     return result;
+}
+
+template <typename IndexType,
+          typename ValueType1,
+          typename ValueType2,
+          typename ValueType3>
+std::vector<::ktt::KernelResult>
+tune(::ktt::Tuner& tuner,
+     const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
+     const cusp::array1d<ValueType2, cusp::device_memory>& x,
+     cusp::array1d<ValueType3, cusp::device_memory>& y,
+     std::optional<::ktt::ReferenceComputation> reference_computation = std::nullopt)
+{
+    if (A.num_entries == 0) {
+        return {};
+    }
+
+    kernel_context kernel = get_kernel<IndexType, ValueType1, ValueType2, ValueType3>(tuner, cusp::dia_format{});
+    auto args = add_arguments(kernel, A, x, y);
+
+    if (reference_computation) {
+        tuner.SetReferenceComputation(get_output_argument(args, dia_format{}), reference_computation.value());
+    }
+
+    cusp::array1d<ValueType3, cusp::host_memory> host_y = y;
+    tuner.SetLauncher(kernel.kernel_id, [&] (::ktt::ComputeInterface& interface) {
+        // clear y so previous results don't affect validation
+        y = host_y;
+        auto launcher = cusp::system::cuda::ktt::get_launcher(kernel, A.num_rows, A.num_cols);
+        launcher(interface);
+    });
+
+    auto results = tuner.Tune(kernel.kernel_id);
+
+    remove_arguments(kernel, args);
+
+    return results;
 }
 
 } // namespace ktt

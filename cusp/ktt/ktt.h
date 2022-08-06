@@ -16,11 +16,11 @@ inline ::ktt::Tuner& get_tuner();
 
 /**
  * @brief Perform the multiplication y = A*x using an autotuned kernel.
- * 
+ *
  * @tparam Matrix      The type of the sparse matrix to use.
  * @tparam ValueType1  The value type of the x vector.
  * @tparam ValueType2  The value type of the y vector.
- * 
+ *
  * @param A The matrix.
  * @param x The input vector.
  * @param y The output vector.
@@ -36,11 +36,11 @@ template <typename Matrix,
 /**
  * @brief Perform the multiplication y = A*x without autotuning,
  * instead just run the kernel in the given configuration.
- * 
+ *
  * @tparam Matrix      The type of the sparse matrix to use.
  * @tparam ValueType1  The value type of the x vector.
  * @tparam ValueType2  The value type of the y vector.
- * 
+ *
  * @param A The matrix.
  * @param x The input vector.
  * @param y The output vector.
@@ -54,16 +54,26 @@ template <typename Matrix,
                             const ::ktt::KernelConfiguration& configuration,
                             bool run_with_profiling = false);
 
+template <typename IndexType,
+          typename ValueType1,
+          typename ValueType2,
+          typename ValueType3>
+std::vector<::ktt::KernelResult>
+tune(const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
+     const cusp::array1d<ValueType2, cusp::device_memory>& x,
+     cusp::array1d<ValueType3, cusp::device_memory>& y,
+     std::optional<::ktt::ReferenceComputation> reference_computation = std::nullopt);
+
 /**
  * TODO: Add some documentation.
- * 
+ *
  * @brief
- * 
- * @tparam IndexType 
- * @tparam ValueType1 
- * @tparam ValueType2 
- * @tparam ValueType3 
- * @tparam Format 
+ *
+ * @tparam IndexType
+ * @tparam ValueType1
+ * @tparam ValueType2
+ * @tparam ValueType3
+ * @tparam Format
  */
 template <typename IndexType,
           typename ValueType1,
@@ -74,16 +84,16 @@ void reset_tuning();
 
 /**
  * TODO: Add some documentation.
- * 
- * @brief 
- * 
- * @tparam MatrixType 
- * @tparam ValueType1 
- * @tparam ValueType2 
- * 
- * @param A 
- * @param x 
- * @param y 
+ *
+ * @brief
+ *
+ * @tparam MatrixType
+ * @tparam ValueType1
+ * @tparam ValueType2
+ *
+ * @param A
+ * @param x
+ * @param y
  */
 template <typename MatrixType,
           typename ValueType1,
