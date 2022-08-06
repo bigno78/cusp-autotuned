@@ -63,50 +63,55 @@ void assert_tunning_results_valid(const std::vector<::ktt::KernelResult>& result
                          const std::string& filename = "unknown",
                          int lineno = -1)
 {
-    // Since we use a stop condition that stops on the first error, it is enough
-    // to check the last result.
-    auto result = results.back();
-
-    if (result.IsValid()) {
-        return;
-    }
-
-    std::string reason = "";
-
-    switch (result.GetStatus()) {
-        case ::ktt::ResultStatus::Ok:
-            return;
-        case ::ktt::ResultStatus::CompilationFailed:
-            reason = "CompilationFailed";
-            break;
-        case ::ktt::ResultStatus::ComputationFailed:
-            reason = "ComputationFailed";
-            break;
-        case ::ktt::ResultStatus::DeviceLimitsExceeded:
-            reason = "DeviceLimitsExceeded";
-            break;
-        case ::ktt::ResultStatus::ValidationFailed:
-            reason = "ValidationFailed";
-            break;
-    }
-
+    bool failed = false;
     unittest::UnitTestFailure f;
-    f << "[" << filename << ":" << lineno << "] " << result.GetKernelName() << ": ";
-    f << "Encountered an error: " << reason << "\n";
 
-    f << "\nIn configuration:\n";
+    for (const auto& result : results) {
+        if (result.IsValid()) {
+            continue;
+        }
 
-    for (auto parameter : result.GetConfiguration().GetPairs()) {
-        f << "  " << parameter.GetString() << "\n";
+        std::string reason = "";
+
+        switch (result.GetStatus()) {
+            case ::ktt::ResultStatus::Ok:
+                continue;
+            case ::ktt::ResultStatus::CompilationFailed:
+                reason = "CompilationFailed";
+                break;
+            case ::ktt::ResultStatus::ComputationFailed:
+                reason = "ComputationFailed";
+                break;
+            case ::ktt::ResultStatus::DeviceLimitsExceeded:
+                reason = "DeviceLimitsExceeded";
+                break;
+            case ::ktt::ResultStatus::ValidationFailed:
+                reason = "ValidationFailed";
+                break;
+        }
+
+        failed = true;
+
+        f << "[" << filename << ":" << lineno << "] " << result.GetKernelName() << ": ";
+        f << "Encountered an error: " << reason << "\n";
+
+        f << "\nIn configuration:\n";
+
+        for (auto parameter : result.GetConfiguration().GetPairs()) {
+            f << "  " << parameter.GetString() << "\n";
+        }
+
+        f << "\n";
     }
 
-    f << "\nLogs:\n";
-    f << ktt_logs;
-
-    throw f;
+    if (failed) {
+        f << "Logs:\n";
+        f << ktt_logs;
+        throw f;
+    }
 }
 
-#define ASSERT_TUNIG_RESULTS_VALID(results, logs) assert_tunning_results_valid((results), (logs), __FILE__,  __LINE__)
+#define ASSERT_TUNING_RESULTS_VALID(results, logs) assert_tunning_results_valid((results), (logs), __FILE__,  __LINE__)
 
 #define DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST, Fmt, fmt)          \
 void VTEST##Ktt##Fmt##Matrix(void)                                   \
@@ -152,32 +157,21 @@ void CheckAllConfigurations(const cusp::coo_matrix<int, float, cusp::host_memory
     cusp::array1d<ValueType, cusp::host_memory> host_y(A.num_rows, 10);
     cusp::array1d<ValueType, cusp::device_memory> device_y = host_y;
 
-    cusp::ktt::detail::lazy_init();
-    ::ktt::Tuner& tuner = cusp::ktt::get_tuner();
-    cusp::system::cuda::ktt::kernel_context kernel_ctx = cusp::system::cuda::ktt::get_kernel(tuner, _A, device_x, device_y);
-    std::vector<::ktt::ArgumentId> args = cusp::system::cuda::ktt::add_arguments(kernel_ctx, _A, device_x, device_y);
+    auto& tuner = cusp::ktt::get_tuner();
 
     std::stringstream logging_stream;
     tuner.SetLoggingTarget(logging_stream);
 
-    ::ktt::ArgumentId y_arg  = cusp::system::cuda::ktt::get_output_argument(args, Format{});
-    tuner.SetReferenceComputation(y_arg, [&] (void* raw_buffer) {
+    ::ktt::ReferenceComputation reference_computation = [&] (void* raw_buffer) {
         std::memcpy(raw_buffer, (void*) reference_y.data(), sizeof(ValueType)*reference_y.size());
-    });
+    };
 
-    tuner.SetLauncher(kernel_ctx.kernel_id, [&] (::ktt::ComputeInterface& interface) {
-        // clear y before calling the kernel
-        device_y = host_y;
-        auto launcher = cusp::system::cuda::ktt::get_launcher(kernel_ctx, _A.num_rows, _A.num_cols);
-        launcher(interface);
-    });
-
-    auto results = tuner.Tune(kernel_ctx.kernel_id, std::make_unique<UnitTestStopCondition>());
+    auto results = cusp::ktt::tune(_A, device_x, device_y, reference_computation);
 
     tuner.SetLoggingTarget(std::cerr);
     std::string logs = logging_stream.str();
 
-    ASSERT_TUNIG_RESULTS_VALID(results, logs);
+    ASSERT_TUNING_RESULTS_VALID(results, logs);
 }
 
 

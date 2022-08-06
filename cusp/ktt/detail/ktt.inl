@@ -52,6 +52,8 @@ inline void lazy_init()
 #endif
         tuner->SetCompilerOptions(compiler_flags);
 
+        tuner->SetValidationMode(::ktt::ValidationMode::OfflineTuning);
+
         std::atexit(cleanup);
     }
 }
@@ -82,9 +84,6 @@ template <typename Matrix,
               const cusp::array1d<ValueType1, cusp::device_memory>& x,
               cusp::array1d<ValueType2, cusp::device_memory>& y)
 {
-    using Format = typename Matrix::format;
-
-    detail::lazy_init();
     return cusp::system::cuda::ktt::multiply(get_tuner(), A, x, y);
 }
 
@@ -98,10 +97,21 @@ template <typename Matrix,
                              const ::ktt::KernelConfiguration& configuration,
                              bool run_with_profiling)
 {
-    using Format = typename Matrix::format;
+    return cusp::system::cuda::ktt::multiply(get_tuner(), A, x, y, configuration, run_with_profiling);
+}
 
-    detail::lazy_init();
-    return cusp::system::cuda::ktt::multiply(*detail::tuner, A, x, y, configuration, run_with_profiling);
+
+template <typename IndexType,
+          typename ValueType1,
+          typename ValueType2,
+          typename ValueType3>
+std::vector<::ktt::KernelResult>
+tune(const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
+     const cusp::array1d<ValueType2, cusp::device_memory>& x,
+     cusp::array1d<ValueType3, cusp::device_memory>& y,
+     std::optional<::ktt::ReferenceComputation> reference_computation)
+{
+    return cusp::system::cuda::ktt::tune(get_tuner(), A, x, y, reference_computation);
 }
 
 
