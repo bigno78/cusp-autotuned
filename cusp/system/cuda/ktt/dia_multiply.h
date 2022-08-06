@@ -1,4 +1,4 @@
-#pragma once 
+#pragma once
 
 #include <iostream>
 
@@ -22,7 +22,7 @@ namespace dia {
 
 inline void setup_tuning_parameters(::ktt::Tuner& tuner, const kernel_context& kernel)
 {
-    tuner.AddParameter(kernel.kernel_id, "TEST_PARAM", std::vector<uint64_t>{0, 1, 2});
+    tuner.AddParameter(kernel.kernel_id, "KERNEL_TYPE", std::vector<uint64_t>{ 0, 1, 2 });
 }
 
 } // namespace dia
@@ -52,8 +52,8 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner, cusp::dia_format)
     const ::ktt::DimensionVector gridDimensions(MAX_BLOCKS);
 
     auto definition_id = tuner.AddKernelDefinitionFromFile(
-        "ktt_dia_vector_kernel", 
-        kernel_path, 
+        "ktt_dia_vector_kernel",
+        kernel_path,
         gridDimensions,
         blockDimensions,
         type_names
@@ -102,6 +102,25 @@ inline ::ktt::ArgumentId get_output_argument(const std::vector<::ktt::ArgumentId
     return arguments[7];
 }
 
+auto get_launcher(const kernel_context& ctx,
+                  size_t num_rows,
+                  size_t num_cols,
+                  bool profile = false)
+{
+    return [=] (::ktt::ComputeInterface& interface) {
+        ::ktt::DimensionVector block_size = interface.GetCurrentLocalSize(ctx.definition_ids[0]);
+        ::ktt::DimensionVector grid_size( DIVIDE_INTO(num_rows, block_size.GetSizeX()) );
+
+        if (!profile) {
+            interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
+        } else {
+            do {
+                interface.RunKernelWithProfiling(ctx.definition_ids[0], grid_size, block_size);
+            } while(interface.GetRemainingProfilingRuns(ctx.definition_ids[0]) > 0);
+        }
+    };
+}
+
 template <typename IndexType,
           typename ValueType1,
           typename ValueType2,
@@ -117,11 +136,15 @@ template <typename IndexType,
         result.SetStatus(::ktt::ResultStatus::Ok);
         return result;
     }
-    
+
     const kernel_context& kernel = get_kernel<IndexType, ValueType1, ValueType2, ValueType3>(tuner, cusp::dia_format{});
     auto args = add_arguments(kernel, A, x, y);
+
+    tuner.SetLauncher(kernel.kernel_id, get_launcher(kernel, A.num_rows, A.num_cols));
+
     auto res = tuner.TuneIteration(kernel.kernel_id, {});
     remove_arguments(kernel, args);
+
     return res;
 }
 
@@ -133,7 +156,8 @@ template <typename IndexType,
               const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
               const cusp::array1d<ValueType2, cusp::device_memory>& x,
               cusp::array1d<ValueType3, cusp::device_memory>& y,
-              const ::ktt::KernelConfiguration& configuration)
+              const ::ktt::KernelConfiguration& configuration,
+              bool run_with_profiling = false)
 {
     if (A.num_entries == 0) {
         thrust::fill(y.begin(), y.end(), ValueType3(0));
@@ -141,9 +165,12 @@ template <typename IndexType,
         result.SetStatus(::ktt::ResultStatus::Ok);
         return result;
     }
-    
+
     kernel_context kernel = get_kernel<IndexType, ValueType1, ValueType2, ValueType3>(tuner, cusp::dia_format{});
     auto args = add_arguments(kernel, A, x, y);
+
+    tuner.SetLauncher(kernel.kernel_id, get_launcher(kernel, A.num_rows, A.num_cols, run_with_profiling));
+
     auto result = tuner.Run(kernel.kernel_id, configuration, {});
     remove_arguments(kernel, args);
 

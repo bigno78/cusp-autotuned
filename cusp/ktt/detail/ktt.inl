@@ -46,9 +46,11 @@ inline void lazy_init()
             tuner = std::make_unique<::ktt::Tuner>(::ktt::ComputeApi::CUDA, initializer);
         }
 
+        std::string compiler_flags = "-std=c++17 ";
 #ifdef KTT_LINE_INFO
-        tuner->SetCompilerOptions("-lineinfo");
+        compiler_flags += "-lineinfo ";
 #endif
+        tuner->SetCompilerOptions(compiler_flags);
 
         std::atexit(cleanup);
     }
@@ -68,6 +70,7 @@ inline void enable() {
 
 inline ::ktt::Tuner& get_tuner()
 {
+    detail::lazy_init();
     return *detail::tuner;
 }
 
@@ -89,15 +92,16 @@ template <typename Matrix,
 template <typename Matrix,
           typename ValueType1,
           typename ValueType2>
-void multiply(const Matrix& A,
-              const cusp::array1d<ValueType1, cusp::device_memory>& x,
-              cusp::array1d<ValueType2, cusp::device_memory>& y,
-              const ::ktt::KernelConfiguration& configuration)
+::ktt::KernelResult multiply(const Matrix& A,
+                             const cusp::array1d<ValueType1, cusp::device_memory>& x,
+                             cusp::array1d<ValueType2, cusp::device_memory>& y,
+                             const ::ktt::KernelConfiguration& configuration,
+                             bool run_with_profiling)
 {
     using Format = typename Matrix::format;
 
     detail::lazy_init();
-    cusp::system::cuda::ktt::multiply(*detail::tuner, A, x, y, configuration);
+    return cusp::system::cuda::ktt::multiply(*detail::tuner, A, x, y, configuration, run_with_profiling);
 }
 
 

@@ -48,10 +48,11 @@ template <typename Matrix,
 template <typename Matrix,
           typename ValueType1,
           typename ValueType2>
-void multiply(const Matrix& A,
-              const cusp::array1d<ValueType1, cusp::device_memory>& x,
-              cusp::array1d<ValueType2, cusp::device_memory>& y,
-              const ::ktt::KernelConfiguration& configuration);
+::ktt::KernelResult multiply(const Matrix& A,
+                            const cusp::array1d<ValueType1, cusp::device_memory>& x,
+                            cusp::array1d<ValueType2, cusp::device_memory>& y,
+                            const ::ktt::KernelConfiguration& configuration,
+                            bool run_with_profiling = false);
 
 /**
  * TODO: Add some documentation.

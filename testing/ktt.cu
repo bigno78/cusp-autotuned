@@ -36,7 +36,7 @@ struct UnitTestStopCondition : ::ktt::StopCondition
     }
 
     void Update(const ::ktt::KernelResult& result) override
-    {       
+    {
         failed_ = failed_ || !result.IsValid();
         explored_configurations_++;
     }
@@ -95,7 +95,7 @@ void assert_tunning_results_valid(const std::vector<::ktt::KernelResult>& result
     f << "Encountered an error: " << reason << "\n";
 
     f << "\nIn configuration:\n";
-    
+
     for (auto parameter : result.GetConfiguration().GetPairs()) {
         f << "  " << parameter.GetString() << "\n";
     }
@@ -154,8 +154,8 @@ void CheckAllConfigurations(const cusp::coo_matrix<int, float, cusp::host_memory
 
     cusp::ktt::detail::lazy_init();
     ::ktt::Tuner& tuner = cusp::ktt::get_tuner();
-    cusp::system::cuda::ktt::kernel_context kernet_ctx = cusp::system::cuda::ktt::get_kernel(tuner, _A, device_x, device_y);
-    std::vector<::ktt::ArgumentId> args = cusp::system::cuda::ktt::add_arguments(kernet_ctx, _A, device_x, device_y);
+    cusp::system::cuda::ktt::kernel_context kernel_ctx = cusp::system::cuda::ktt::get_kernel(tuner, _A, device_x, device_y);
+    std::vector<::ktt::ArgumentId> args = cusp::system::cuda::ktt::add_arguments(kernel_ctx, _A, device_x, device_y);
 
     std::stringstream logging_stream;
     tuner.SetLoggingTarget(logging_stream);
@@ -165,13 +165,14 @@ void CheckAllConfigurations(const cusp::coo_matrix<int, float, cusp::host_memory
         std::memcpy(raw_buffer, (void*) reference_y.data(), sizeof(ValueType)*reference_y.size());
     });
 
-    tuner.SetLauncher(kernet_ctx.kernel_id, [&] (::ktt::ComputeInterface& interface) {
+    tuner.SetLauncher(kernel_ctx.kernel_id, [&] (::ktt::ComputeInterface& interface) {
         // clear y before calling the kernel
         device_y = host_y;
-        interface.RunKernel(kernet_ctx.kernel_id);
+        auto launcher = cusp::system::cuda::ktt::get_launcher(kernel_ctx, _A.num_rows, _A.num_cols);
+        launcher(interface);
     });
 
-    auto results = tuner.Tune(kernet_ctx.kernel_id, std::make_unique<UnitTestStopCondition>());
+    auto results = tuner.Tune(kernel_ctx.kernel_id, std::make_unique<UnitTestStopCondition>());
 
     tuner.SetLoggingTarget(std::cerr);
     std::string logs = logging_stream.str();
