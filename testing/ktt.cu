@@ -13,11 +13,24 @@
 #include <cusp/permutation_matrix.h>
 
 #include <cusp/multiply.h>
+
 #include <cusp/ktt/ktt.h>
+#include <cusp/ktt/matrix_generation.h>
 
 #include <iostream>
 #include <sstream>
 #include <memory>
+
+
+#define DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST, Fmt, fmt)              \
+    void VTEST##Ktt##Fmt##Matrix(void)                                   \
+    {                                                                    \
+        VTEST< cusp::fmt##_matrix<int, float, cusp::device_memory> >();  \
+    }                                                                    \
+    DECLARE_UNITTEST(VTEST##Ktt##Fmt##Matrix);
+
+#define DECLARE_KTT_UNITTEST(VTEST) \
+    DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST,Dia,dia)
 
 
 struct UnitTestStopCondition : ::ktt::StopCondition
@@ -60,6 +73,7 @@ private:
 
 void assert_tunning_results_valid(const std::vector<::ktt::KernelResult>& results,
                          const std::string& ktt_logs,
+                         const std::string& arg_name,
                          const std::string& filename = "unknown",
                          int lineno = -1)
 {
@@ -93,9 +107,10 @@ void assert_tunning_results_valid(const std::vector<::ktt::KernelResult>& result
         failed = true;
 
         f << "[" << filename << ":" << lineno << "] " << result.GetKernelName() << ": ";
-        f << "Encountered an error: " << reason << "\n";
+        f << "Encountered an error: " << reason << "\n\n";
+        f << "On matrix: " << arg_name << "\n\n";
 
-        f << "\nIn configuration:\n";
+        f << "In configuration:\n";
 
         for (auto parameter : result.GetConfiguration().GetPairs()) {
             f << "  " << parameter.GetString() << "\n";
@@ -111,21 +126,11 @@ void assert_tunning_results_valid(const std::vector<::ktt::KernelResult>& result
     }
 }
 
-#define ASSERT_TUNING_RESULTS_VALID(results, logs) assert_tunning_results_valid((results), (logs), __FILE__,  __LINE__)
-
-#define DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST, Fmt, fmt)          \
-void VTEST##Ktt##Fmt##Matrix(void)                                   \
-{                                                                    \
-    VTEST< cusp::fmt##_matrix<int, float, cusp::device_memory> >();  \
-}                                                                    \
-DECLARE_UNITTEST(VTEST##Ktt##Fmt##Matrix);
-
-#define DECLARE_KTT_UNITTEST(VTEST)         \
-DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST,Dia,dia)
-
-
 template <typename SparseMatrixType>
-void CheckAllConfigurations(const cusp::coo_matrix<int, float, cusp::host_memory>& A)
+void CheckAllConfigurations(const cusp::coo_matrix<int, float, cusp::host_memory>& A,
+                            const std::string& arg_name,
+                            const std::string& filename = "unknown",
+                            int lineno = -1)
 {
     using ValueType = typename SparseMatrixType::value_type;
     using Format = typename SparseMatrixType::format;
@@ -171,8 +176,11 @@ void CheckAllConfigurations(const cusp::coo_matrix<int, float, cusp::host_memory
     tuner.SetLoggingTarget(std::cerr);
     std::string logs = logging_stream.str();
 
-    ASSERT_TUNING_RESULTS_VALID(results, logs);
+    assert_tunning_results_valid(results, logs, arg_name, filename, lineno);
 }
+
+#define CHECK_ALL_CONFIGURATIONS(MatrixTypeUnderTest, input_matrix) \
+    CheckAllConfigurations<MatrixTypeUnderTest>(input_matrix, #input_matrix, __FILE__, __LINE__)
 
 
 template <class TestMatrix>
@@ -203,7 +211,7 @@ void TestSparseMatrixVectorMultiply()
     A(4, 2) = 27;
     A(4, 3) =  0;
     cusp::coo_matrix<IndexType, ValueType, cusp::host_memory> A_coo = A;
-    CheckAllConfigurations<TestMatrix>(A_coo);
+    CHECK_ALL_CONFIGURATIONS(TestMatrix, A_coo);
 
     cusp::array2d<ValueType,cusp::host_memory> B(2,4);
     B(0,0) = 0.0;
@@ -215,7 +223,7 @@ void TestSparseMatrixVectorMultiply()
     B(1,2) = 0.0;
     B(1,3) = 8.0;
     cusp::coo_matrix<IndexType, ValueType, cusp::host_memory> B_coo = B;
-    CheckAllConfigurations<TestMatrix>(B_coo);
+    CHECK_ALL_CONFIGURATIONS(TestMatrix, B_coo);
 
     cusp::array2d<ValueType,cusp::host_memory> C(2,2);
     C(0,0) = 0.0;
@@ -223,13 +231,13 @@ void TestSparseMatrixVectorMultiply()
     C(1,0) = 3.0;
     C(1,1) = 5.0;
     cusp::coo_matrix<IndexType, ValueType, cusp::host_memory> C_coo = C;
-    CheckAllConfigurations<TestMatrix>(C_coo);
+    CHECK_ALL_CONFIGURATIONS(TestMatrix, C_coo);
 
     cusp::array2d<ValueType,cusp::host_memory> D(2,1);
     D(0,0) = 2.0;
     D(1,0) = 3.0;
     cusp::coo_matrix<IndexType, ValueType, cusp::host_memory> D_coo = D;
-    CheckAllConfigurations<TestMatrix>(D_coo);
+    CHECK_ALL_CONFIGURATIONS(TestMatrix, D_coo);
 
     cusp::array2d<ValueType,cusp::host_memory> F(2,3);
     F(0,0) = 0.0;
@@ -239,6 +247,15 @@ void TestSparseMatrixVectorMultiply()
     F(1,1) = 0.0;
     F(1,2) = 0.0;
     cusp::coo_matrix<IndexType, ValueType, cusp::host_memory> F_coo = F;
-    CheckAllConfigurations<TestMatrix>(F_coo);
+    CHECK_ALL_CONFIGURATIONS(TestMatrix, F_coo);
+
+    auto G_dia = cusp::ktt::make_diagonal_symmetric_matrix(2000, 2000, 1, 512);
+    CHECK_ALL_CONFIGURATIONS(TestMatrix, G_dia);
+
+    auto H_dia = cusp::ktt::make_diagonal_symmetric_matrix(1500, 2000, 1, 512);
+    CHECK_ALL_CONFIGURATIONS(TestMatrix, H_dia);
+
+    auto I_dia = cusp::ktt::make_diagonal_symmetric_matrix(2000, 1500, 1, 512);
+    CHECK_ALL_CONFIGURATIONS(TestMatrix, I_dia);
 }
 DECLARE_KTT_UNITTEST(TestSparseMatrixVectorMultiply);
