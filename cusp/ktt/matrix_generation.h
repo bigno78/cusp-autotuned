@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cusp/ell_matrix.h>
+#include <cusp/dia_matrix.h>
 
 #include <algorithm> // min
 
@@ -69,50 +69,6 @@ make_diagonal_symmetric_matrix(int rows,
 
     return res;
 }
-
-// cusp::ell_matrix<int, float, cusp::host_memory>
-// make_regular_grid(size_t point_distance,
-//                   size_t grid_width)
-// {
-//     using EllMatrix = cusp::ell_matrix<int, float, cusp::host_memory>;
-
-//     size_t num_entries = grid_width * grid_width;
-//     size_t width = (num_grid_points - 1)*point_distance + 1;
-
-//     if (width > num_rows || width > num_cols) {
-//         return {};
-//     }
-
-//     EllMatrix::values_array_type values(num_rows, num_grid_points);
-//     EllMatrix::column_indices_array_type col_indices(num_rows, num_grid_points);
-
-//     int col = 0;
-//     for (int i = 0; i < num_grid_points; ++i) {
-//         for (int j = 0; i < num_grid_points) {
-//             int offset = starting_offset + offset_step*i;
-//             offsets.push_back(offset);
-
-//             int starting_row = offset < 0 ? -offset : 0;
-//             int ending_row = offset < 0 ? rows : rows - offset;
-
-//             for (int row = starting_row; row < ending_row; ++row) {
-//                 num_entries++;
-//                 values(row, i) = 1;
-//             }
-//         }
-//     }
-
-//     DiaMatrix res;
-
-//     res.num_rows = rows;
-//     res.num_cols = cols;
-//     res.num_entries = num_entries;
-
-//     res.diagonal_offsets.swap(offsets);
-//     res.values.swap(values);
-
-//     return res;
-// }
 
 } // namespace ktt
 
