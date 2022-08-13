@@ -126,39 +126,48 @@ void assert_tunning_results_valid(const std::vector<::ktt::KernelResult>& result
     }
 }
 
-template <typename SparseMatrixType>
-void CheckAllConfigurations(const cusp::coo_matrix<int, float, cusp::host_memory>& A,
+template <typename SparseMatrixType, typename TestMatrixType>
+void CheckAllConfigurations(const TestMatrixType& test_matrix,
                             const std::string& arg_name,
                             const std::string& filename = "unknown",
                             int lineno = -1)
 {
     using ValueType = typename SparseMatrixType::value_type;
     using Format = typename SparseMatrixType::format;
+    using DeviceTestMatrix = typename TestMatrixType::rebind<cusp::device_memory>::type;
 
     // prepare the x vector
-    cusp::array1d<ValueType, cusp::host_memory> host_x(A.num_cols);
+    cusp::array1d<ValueType, cusp::host_memory> host_x(test_matrix.num_cols);
     for(size_t i = 0; i < host_x.size(); i++) {
         host_x[i] = i % 10;
     }
     cusp::array1d<ValueType, cusp::device_memory> device_x = host_x;
+    cusp::array1d<ValueType, cusp::host_memory> reference_y(test_matrix.num_rows, 10);
 
-    cusp::array1d<ValueType, cusp::host_memory> reference_y(A.num_rows, 10);
+    const DeviceTestMatrix* device_test_matrix = nullptr;
+
+    DeviceTestMatrix device_matrix;
+    if constexpr (std::is_same_v<cusp::host_memory, typename TestMatrixType::memory_space>) {
+        device_matrix = test_matrix;
+        device_test_matrix = &device_matrix;
+    } else {
+        device_test_matrix = &test_matrix;
+    }
 
     // Compute the reference output on the gpu.
     // Do in in a nested block so that all memory is deallocated in the end
     // and we don't take up device memory.
     {
-        cusp::coo_matrix<int, float, cusp::device_memory> B = A;
-        cusp::array1d<ValueType, cusp::device_memory> y(A.num_rows, 10);
+        cusp::array1d<ValueType, cusp::device_memory> y(test_matrix.num_rows, 10);
 
         cusp::ktt::disable();
-        cusp::multiply(B, device_x, y);
+        cusp::multiply(*device_test_matrix, device_x, y);
         cusp::ktt::enable();
 
         reference_y = y;
     }
 
-    SparseMatrixType _A = A;
+    SparseMatrixType A = *device_test_matrix;
     cusp::array1d<ValueType, cusp::host_memory> host_y(A.num_rows, 10);
     cusp::array1d<ValueType, cusp::device_memory> device_y = host_y;
 
@@ -171,7 +180,7 @@ void CheckAllConfigurations(const cusp::coo_matrix<int, float, cusp::host_memory
         std::memcpy(raw_buffer, (void*) reference_y.data(), sizeof(ValueType)*reference_y.size());
     };
 
-    auto results = cusp::ktt::tune(_A, device_x, device_y, reference_computation);
+    auto results = cusp::ktt::tune(A, device_x, device_y, reference_computation);
 
     tuner.SetLoggingTarget(std::cerr);
     std::string logs = logging_stream.str();
@@ -249,13 +258,13 @@ void TestSparseMatrixVectorMultiply()
     cusp::coo_matrix<IndexType, ValueType, cusp::host_memory> F_coo = F;
     CHECK_ALL_CONFIGURATIONS(TestMatrix, F_coo);
 
-    auto G_dia = cusp::ktt::make_diagonal_symmetric_matrix(2000, 2000, 1, 512);
+    auto G_dia = cusp::ktt::make_diagonal_symmetric_matrix(4096, 4096, 1, 1024);
     CHECK_ALL_CONFIGURATIONS(TestMatrix, G_dia);
 
-    auto H_dia = cusp::ktt::make_diagonal_symmetric_matrix(1500, 2000, 1, 512);
+    auto H_dia = cusp::ktt::make_diagonal_symmetric_matrix(4096, 2048, 1, 1024);
     CHECK_ALL_CONFIGURATIONS(TestMatrix, H_dia);
 
-    auto I_dia = cusp::ktt::make_diagonal_symmetric_matrix(2000, 1500, 1, 512);
+    auto I_dia = cusp::ktt::make_diagonal_symmetric_matrix(2048, 4096, 1, 1024);
     CHECK_ALL_CONFIGURATIONS(TestMatrix, I_dia);
 }
 DECLARE_KTT_UNITTEST(TestSparseMatrixVectorMultiply);
