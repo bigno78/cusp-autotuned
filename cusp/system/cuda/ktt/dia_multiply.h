@@ -22,7 +22,7 @@ namespace dia {
 
 inline void setup_tuning_parameters(::ktt::Tuner& tuner, const kernel_context& kernel)
 {
-    tuner.AddParameter(kernel.kernel_id, "KERNEL_TYPE", std::vector<uint64_t>{ 0, 1, 2 });
+    tuner.AddParameter(kernel.kernel_id, "KERNEL_TYPE", std::vector<uint64_t>{ 0, 1, 2, 3, 4 });
 }
 
 } // namespace dia
@@ -114,9 +114,7 @@ auto get_launcher(const kernel_context& ctx,
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
         } else {
-            do {
-                interface.RunKernelWithProfiling(ctx.definition_ids[0], grid_size, block_size);
-            } while(interface.GetRemainingProfilingRuns(ctx.definition_ids[0]) > 0);
+            interface.RunKernelWithProfiling(ctx.definition_ids[0], grid_size, block_size);
         }
     };
 }
@@ -165,6 +163,8 @@ template <typename IndexType,
         result.SetStatus(::ktt::ResultStatus::Ok);
         return result;
     }
+
+    std::cout << "HEllo\n";
 
     kernel_context kernel = get_kernel<IndexType, ValueType1, ValueType2, ValueType3>(tuner, cusp::dia_format{});
     auto args = add_arguments(kernel, A, x, y);
