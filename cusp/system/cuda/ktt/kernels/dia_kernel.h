@@ -100,11 +100,18 @@ blocked_offsets_dia_kernel(const int num_rows,
 
     const IndexType thread_id = BLOCK_SIZE * blockIdx.x + threadIdx.x;
 
+#if PREFETCH_FACTOR > 0
+    __shared__ ValueType1 values_prefetched[PREFETCH_FACTOR*BLOCK_SIZE];
+    __shared__ ValueType2 x_prefetched[PREFETCH_FACTOR*BLOCK_SIZE];
+#endif
+
     __shared__ IndexType offsets[BLOCK_SIZE];
     ValueType sum = ValueType(0);
 
-    for (int offset_base = 0; offset_base < num_diagonals; offset_base += BLOCK_SIZE) {
-        if (offset_base + threadIdx.x < num_diagonals) {
+    for (int offset_base = 0; offset_base < num_diagonals; offset_base += BLOCK_SIZE)
+    {
+        if (offset_base + threadIdx.x < num_diagonals)
+        {
             offsets[threadIdx.x] = diagonal_offsets[offset_base + threadIdx.x];
         }
 
@@ -112,21 +119,65 @@ blocked_offsets_dia_kernel(const int num_rows,
 
         int batch_size = BLOCK_SIZE > num_diagonals - offset_base ? num_diagonals - offset_base : BLOCK_SIZE;
 
-        if (thread_id < num_rows) {
-            for (IndexType i = 0; i < batch_size; ++i) {
+        if (thread_id < num_rows)
+        {
+#if PREFETCH_FACTOR == 0
+            for (IndexType i = 0; i < batch_size; ++i)
+            {
                 IndexType col = offsets[i] + thread_id;
-                if (col >= 0 && col < num_cols) {
+                if (col >= 0 && col < num_cols)
+                {
                     auto diag_val = values[ (offset_base + i)*pitch + thread_id ];
                     auto x_val = __ldg(x + col);
                     sum += diag_val*x_val;
                 }
             }
+#else
+            int rest = batch_size % PREFETCH_FACTOR;
+            int end = batch_size - rest;
+
+            for (IndexType i = 0; i < end; i += PREFETCH_FACTOR)
+            {
+                for (int j = 0; j < PREFETCH_FACTOR; ++j)
+                {
+                    IndexType col = offsets[i + j] + thread_id;
+                    if (col >= 0 && col < num_cols)
+                    {
+                        auto val = values[ (offset_base + i + j)*pitch + thread_id ];
+                        values_prefetched[j*BLOCK_SIZE + threadIdx.x] = val;
+                        x_prefetched[j*BLOCK_SIZE + threadIdx.x] = __ldg(x + col);
+                    }
+                    else
+                    {
+                        values_prefetched[j*BLOCK_SIZE + threadIdx.x] = ValueType1(0);
+                        x_prefetched[j*BLOCK_SIZE + threadIdx.x] = ValueType2(0);
+                    }
+                }
+
+                for (int j = 0; j < PREFETCH_FACTOR; ++j)
+                {
+                    sum += values_prefetched[j*BLOCK_SIZE + threadIdx.x] * x_prefetched[j*BLOCK_SIZE + threadIdx.x];
+                }
+            }
+
+            for (IndexType i = end; i < batch_size; ++i)
+            {
+                IndexType col = offsets[i] + thread_id;
+                if (col >= 0 && col < num_cols)
+                {
+                    auto diag_val = values[ (offset_base + i)*pitch + thread_id ];
+                    auto x_val = __ldg(x + col);
+                    sum += diag_val*x_val;
+                }
+            }
+#endif
         }
 
         __syncthreads();
     }
 
-    if (thread_id < num_rows) {
+    if (thread_id < num_rows)
+    {
         y[thread_id] = sum;
     }
 }

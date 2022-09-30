@@ -515,16 +515,21 @@ void test_matrix()
     // auto conf1 = tuner.CreateConfiguration(kernel_ctx.kernel_id, { { std::string("KERNEL_TYPE"), uint64_t(0) } });
     // cusp::ktt::multiply(A, x, y, conf1);
 
-    auto conf2 = tuner.CreateConfiguration(kernel_ctx.kernel_id, { { std::string("KERNEL_TYPE"), uint64_t(1) } });
+    auto conf2 = tuner.CreateConfiguration(kernel_ctx.kernel_id, { { std::string("KERNEL_TYPE"), uint64_t(1) },
+                                                                   { std::string("PREFETCH_FACTOR"), uint64_t(0) } });
     //std::cout << tuner.GetPtxSource(kernel_ctx.kernel_id, kernel_ctx.definition_ids[0], conf2) << "\n";
 
-    //cusp::ktt::multiply(A, x, y, conf2);
-    std::cout << size_str(get_actual_read_bytes(A, x, y, conf2)) << "\n";
+    // cusp::ktt::tune(A, x, y);
 
-    auto expected_bytes = min_read_bytes(A, x);
-    std::cout << "Expected: " << size_str(expected_bytes) << "\n";
+    cusp::ktt::multiply(A, x, y, conf2);
+    //std::cout << size_str(get_actual_read_bytes(A, x, y, conf2)) << "\n";
 
+    //auto expected_bytes = min_read_bytes(A, x);
+    //std::cout << "Expected: " << size_str(expected_bytes) << "\n";
 
+    //for (int i = 0; i < 10; ++i) {
+    //    std::cout << y[i] << "\n";
+    //}
 
     //std::cout << size_str(get_actual_read_bytes(A, x, y, conf2)) << "\n";
     //std::cout << size_str(get_actual_read_bytes(A, x, y, conf2)) << "\n";

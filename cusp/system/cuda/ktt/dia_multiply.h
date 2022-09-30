@@ -22,7 +22,8 @@ namespace dia {
 
 inline void setup_tuning_parameters(::ktt::Tuner& tuner, const kernel_context& kernel)
 {
-    tuner.AddParameter(kernel.kernel_id, "KERNEL_TYPE", std::vector<uint64_t>{ 0, 1, 2, 3, 4 });
+    tuner.AddParameter(kernel.kernel_id, "KERNEL_TYPE", std::vector<uint64_t>{ 0, 1 });
+    tuner.AddParameter(kernel.kernel_id, "PREFETCH_FACTOR", std::vector<uint64_t>{ 0, 2, 4, 8 });
 }
 
 } // namespace dia
