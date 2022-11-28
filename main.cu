@@ -540,7 +540,7 @@ void test_l2()
         return;
     }
 
-    size_t max_bytes = std::min(5*(size_t(1) << 30), (size_t)prop.totalGlobalMem);
+    size_t max_bytes = std::min(5*(size_t(1) << 30), (size_t)prop.totalGlobalMem - 1024*(size_t(1) << 20));
     size_t max_floats = max_bytes/sizeof(float);
 
     std::cout << "L2 size: " << size_str(prop.l2CacheSize) << "\n";
