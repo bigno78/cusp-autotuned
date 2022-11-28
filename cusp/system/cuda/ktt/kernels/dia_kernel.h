@@ -67,11 +67,14 @@ naive_dia_kernel(const int num_rows,
 
     const IndexType thread_id = BLOCK_SIZE * blockIdx.x + threadIdx.x;
 
-    if (thread_id < num_rows) {
+    if (thread_id < num_rows)
+    {
         ValueType sum = ValueType(0);
-        for (IndexType i = 0; i < num_diagonals; ++i) {
+        for (IndexType i = 0; i < num_diagonals; ++i)
+        {
             IndexType col = diagonal_offsets[i] + thread_id;
-            if (col >= 0 && col < num_cols) {
+            if (col >= 0 && col < num_cols)
+            {
                 auto diag_val = values[i*pitch + thread_id];
                 auto x_val = x[col];
                 sum += diag_val * x_val;
@@ -325,7 +328,7 @@ template <typename IndexType,
           typename ValueType3,
           unsigned int BLOCK_SIZE>
 __device__ void
-cached_naive_dia_kernel(const int num_rows,
+cached_x_naive_dia_kernel(const int num_rows,
                  const int num_cols,
                  const int num_diagonals,
                  const int pitch,
@@ -395,7 +398,7 @@ ktt_dia_vector_kernel(
     experimental_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3, BLOCK_SIZE>
         (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
 // #elif KERNEL_TYPE == 4
-//     cached_naive_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3, BLOCK_SIZE>
+//     cached_x_naive_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3, BLOCK_SIZE>
 //         (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
 #endif
 }
