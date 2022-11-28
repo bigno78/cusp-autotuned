@@ -614,9 +614,9 @@ void test_matrix()
     const int n = 8*(1u << 20);
     //const int n = (1u << 20)/2;
 
-    cusp::dia_matrix<int, float, cusp::host_memory> dia_host_matrix;
-    cusp::gallery::poisson7pt(dia_host_matrix, 390, 390, 390);
-    // auto dia_host_matrix = cusp::ktt::make_diagonal_symmetric_matrix(n, n, 1, 32);
+    // cusp::dia_matrix<int, float, cusp::host_memory> dia_host_matrix;
+    // cusp::gallery::poisson7pt(dia_host_matrix, 390, 390, 390);
+    auto dia_host_matrix = cusp::ktt::make_diagonal_symmetric_matrix(n, n, 1, 64);
 
     cusp::dia_matrix<int, float, cusp::device_memory> A = dia_host_matrix;
     cusp::array1d<float, cusp::device_memory> x(A.num_cols, 1);
@@ -637,24 +637,24 @@ void test_matrix()
     //     //"l2_global_load_bytes"
     // });
 
-    //cusp::ktt::tune(A2, x, y);
-    //cusp::ktt::tune(A, x, y);
+    std::cout << size_str(dia_problem_size(A.num_rows, A.num_cols, 64)) << "\n";
+    // cusp::ktt::tune(A, x, y);
 
     // auto conf1 = tuner.CreateConfiguration(kernel_ctx.kernel_id, { { std::string("KERNEL_TYPE"), uint64_t(0) } });
     // cusp::ktt::multiply(A, x, y, conf1);
 
     auto conf2 = tuner.CreateConfiguration(kernel_ctx.kernel_id, { { std::string("KERNEL_TYPE"), uint64_t(1) },
-                                                                   { std::string("PREFETCH_FACTOR"), uint64_t(0) } });
-    size_t non_cached = get_actual_read_bytes(tuner, A, x, y, conf2);
+                                                                   { std::string("REGISTER_PREFETCH_FACTOR"), uint64_t(2) } });
+    // size_t non_cached = get_actual_read_bytes(tuner, A, x, y, conf2);
 
-    conf2 = tuner.CreateConfiguration(kernel_ctx.kernel_id, { { std::string("KERNEL_TYPE"), uint64_t(2) },
-                                                              { std::string("PREFETCH_FACTOR"), uint64_t(0) } });
-    size_t cached = get_actual_read_bytes(tuner, A, x, y, conf2);
+    // conf2 = tuner.CreateConfiguration(kernel_ctx.kernel_id, { { std::string("KERNEL_TYPE"), uint64_t(2) },
+    //                                                           { std::string("PREFETCH_FACTOR"), uint64_t(0) } });
+    // size_t cached = get_actual_read_bytes(tuner, A, x, y, conf2);
 
-    std::cout << "non_cached: " << size_str(non_cached) << "\n";
-    std::cout << "cached:     " << size_str(cached) << "\n";
+    // std::cout << "non_cached: " << size_str(non_cached) << "\n";
+    // std::cout << "cached:     " << size_str(cached) << "\n";
 
-    //std::cout << tuner.GetPtxSource(kernel_ctx.kernel_id, kernel_ctx.definition_ids[0], conf2) << "\n";
+    std::cout << tuner.GetPtxSource(kernel_ctx.kernel_id, kernel_ctx.definition_ids[0], conf2) << "\n";
 
     // cusp::ktt::tune(A, x, y);
 
@@ -680,8 +680,8 @@ int main(void)
     auto& tuner = cusp::ktt::get_tuner();
     tuner.SetTimeUnit(::ktt::TimeUnit::Microseconds);
 
-    test_l2();
-    // test_matrix();
+    // test_l2();
+    test_matrix();
 
     // auto orig = cusp::ktt::make_diagonal_symmetric_matrix(4096, 4096, 4, 256);
     // cusp::coo_matrix<int, float, cusp::device_memory> A = orig;

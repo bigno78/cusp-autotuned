@@ -23,7 +23,22 @@ namespace dia {
 inline void setup_tuning_parameters(::ktt::Tuner& tuner, const kernel_context& kernel)
 {
     tuner.AddParameter(kernel.kernel_id, "KERNEL_TYPE", std::vector<uint64_t>{ 0, 1 });
-    tuner.AddParameter(kernel.kernel_id, "PREFETCH_FACTOR", std::vector<uint64_t>{ 0, 2, 4, 8 });
+    tuner.AddParameter(kernel.kernel_id, "SHARED_PREFETCH_FACTOR", std::vector<uint64_t>{ 0, 2, 4 });
+    tuner.AddParameter(kernel.kernel_id, "REGISTER_PREFETCH_FACTOR", std::vector<uint64_t>{ 0, 1, 2, 3 });
+
+    // only one type of prefetching can be applied at once
+    tuner.AddConstraint(kernel.kernel_id,
+                        {"SHARED_PREFETCH_FACTOR", "REGISTER_PREFETCH_FACTOR"},
+                        [] (const std::vector<uint64_t>& values) {
+                            return values[0] == 0 || values[1] == 0;
+                        });
+
+    // only one type of prefetching can be applied at once
+    tuner.AddConstraint(kernel.kernel_id,
+                        {"KERNEL_TYPE", "SHARED_PREFETCH_FACTOR", "REGISTER_PREFETCH_FACTOR"},
+                        [] (const std::vector<uint64_t>& values) {
+                            return values[0] == 1 || (values[1] == 0 && values[2] == 0);
+                        });
 }
 
 } // namespace dia
