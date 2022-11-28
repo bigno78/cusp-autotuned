@@ -165,8 +165,6 @@ template <typename IndexType,
         return result;
     }
 
-    std::cout << "HEllo\n";
-
     kernel_context kernel = get_kernel<IndexType, ValueType1, ValueType2, ValueType3>(tuner, cusp::dia_format{});
     auto args = add_arguments(kernel, A, x, y);
 
