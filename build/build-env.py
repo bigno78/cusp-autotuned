@@ -277,6 +277,10 @@ def addKTT(env):
     env.Append(RPATH = [ ktt_lib_path ])
     env.Append(LIBS = [ "ktt" ])
 
+    if env['mode'] == 'debug':
+        env.Append(CFLAGS   = ['-DKTT_LINE_INFO'])
+        env.Append(CXXFLAGS = ['-DKTT_LINE_INFO'])
+
 
 def Environment(buildDir):
     # allow the user discretion to choose the MSVC version
@@ -465,7 +469,7 @@ def Environment(buildDir):
             env['ENV']['DYLD_LIBRARY_PATH'] = os.environ['DYLD_LIBRARY_PATH']
         elif 'LD_LIBRARY_PATH' in os.environ:
             env['ENV']['LD_LIBRARY_PATH'] = os.environ['LD_LIBRARY_PATH']
-    
+
     addKTT(env)
 
     # generate help text
