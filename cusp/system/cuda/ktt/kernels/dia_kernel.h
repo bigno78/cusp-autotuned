@@ -10,43 +10,66 @@ __device__ T max(T a, T b) {
     return a > b ? a : b;
 }
 
-// template<typename IndexType,
-//          typename ValueType1,
-//          typename ValueType2,
-//          int K>
-// struct UnrolledLoop : UnrolledLoop<IndexType, ValueType1, ValueType2, K - 1>
-// {
-//     using parent = UnrolledLoop<IndexType, ValueType1, ValueType2, K - 1>;
+template<typename IndexType,
+         typename ValueType1,
+         typename ValueType2,
+         int K>
+struct UnrolledLoop : UnrolledLoop<IndexType, ValueType1, ValueType2, K - 1>
+{
+    using parent = UnrolledLoop<IndexType, ValueType1, ValueType2, K - 1>;
 
-//     IndexType col;
-//     ValueType1 diag_val = 0;
-//     ValueType2 x_val = 0;
+    IndexType col;
+    ValueType1 diag_val = 0;
+    ValueType2 x_val = 0;
 
-//     __device__ void prefetch(const IndexType* offsets,
-//                              const ValueType1* values,
-//                              const ValueType2* x,
-//                              IndexType pitch,
-//                              IndexType row,
-//                              IndexType base,
-//                              IndexType cols)
-//     {
-//         if (col >= 0 && col < cols)
-//         {
-//             diag_val = values[]
-//             parent::prefetch(offsets, values, x, row, base + 1);
-//         }
-//     }
+    __device__ void prefetch(const IndexType* offsets,
+                             const ValueType1* values,
+                             const ValueType2* x,
+                             int pitch,
+                             int cols,
+                             IndexType row,
+                             IndexType offset_base,
+                             IndexType i)
+    {
+        col = offsets[i] + row;
 
-//     template<typename ValueType3>
-//     __device__ ValueType3 do_iter(IndexType cols)
-//     {
-//         if (col < 0 || col >= cols)
-//         {
-//             return 0;
-//         }
-//         return diag_val*x_val + parent::do_iter<ValueType3>(cols);
-//     }
-// };
+        if (col >= 0 && col < cols)
+        {
+            diag_val = values[(offset_base + i)*pitch + row];
+            x_val = __ldg(x + col);
+        }
+
+        parent::prefetch(offsets, values, x, pitch, cols, row, offset_base, i + 1);
+    }
+
+    template<typename ValueType3>
+    __device__ ValueType3 do_iter()
+    {
+        return static_cast<ValueType3>(diag_val*x_val) + parent::template do_iter<ValueType3>();
+    }
+};
+
+template<typename IndexType,
+         typename ValueType1,
+         typename ValueType2>
+struct UnrolledLoop<IndexType, ValueType1, ValueType2, 0>
+{
+    __device__ void prefetch(const IndexType* offsets,
+                             const ValueType1* values,
+                             const ValueType2* x,
+                             int pitch,
+                             int cols,
+                             IndexType row,
+                             IndexType offset_base,
+                             IndexType i) {}
+
+    template<typename ValueType3>
+    __device__ ValueType3 do_iter()
+    {
+        return 0;
+    }
+};
+
 
 template <typename IndexType,
           typename ValueType1,
@@ -140,6 +163,14 @@ blocked_offsets_dia_kernel(const int num_rows,
 
             for (IndexType i = 0; i < end; i += REGISTER_PREFETCH_FACTOR)
             {
+#if REGISTER_PREFETCH_TYPE == 0
+
+                UnrolledLoop<IndexType, ValueType1, ValueType2, REGISTER_PREFETCH_FACTOR> loop;
+                loop.prefetch(offsets, values, x, pitch, num_cols, thread_id, offset_base, i);
+                sum += loop.template do_iter<ValueType3>();
+
+#elif REGISTER_PREFETCH_TYPE == 1
+
                 IndexType col1 = offsets[i] + thread_id;
                 ValueType1 diag_val1 = 0;
                 ValueType2 x_val1 = 0;
@@ -176,6 +207,8 @@ blocked_offsets_dia_kernel(const int num_rows,
 #if REGISTER_PREFETCH_FACTOR > 2
                 sum += diag_val3 * x_val3;
 #endif
+
+#endif // REGISTER_PREFETCH_TYPE == 1
             }
 
             for (IndexType i = end; i < batch_size; ++i)

@@ -23,21 +23,29 @@ namespace dia {
 inline void setup_tuning_parameters(::ktt::Tuner& tuner, const kernel_context& kernel)
 {
     tuner.AddParameter(kernel.kernel_id, "KERNEL_TYPE", std::vector<uint64_t>{ 0, 1 });
-    tuner.AddParameter(kernel.kernel_id, "SHARED_PREFETCH_FACTOR", std::vector<uint64_t>{ 0, 2, 4 });
+    tuner.AddParameter(kernel.kernel_id, "SHARED_PREFETCH_FACTOR", std::vector<uint64_t>{ 0, 2, 4, 8 });
     tuner.AddParameter(kernel.kernel_id, "REGISTER_PREFETCH_FACTOR", std::vector<uint64_t>{ 0, 1, 2, 3 });
+    tuner.AddParameter(kernel.kernel_id, "REGISTER_PREFETCH_TYPE", std::vector<uint64_t>{ 0, 1 });
 
     // only one type of prefetching can be applied at once
     tuner.AddConstraint(kernel.kernel_id,
-                        {"SHARED_PREFETCH_FACTOR", "REGISTER_PREFETCH_FACTOR"},
+                        { "SHARED_PREFETCH_FACTOR", "REGISTER_PREFETCH_FACTOR" },
                         [] (const std::vector<uint64_t>& values) {
                             return values[0] == 0 || values[1] == 0;
                         });
 
-    // only one type of prefetching can be applied at once
+    // prefetching is used only for the blocked offsets kernel
     tuner.AddConstraint(kernel.kernel_id,
-                        {"KERNEL_TYPE", "SHARED_PREFETCH_FACTOR", "REGISTER_PREFETCH_FACTOR"},
+                        { "KERNEL_TYPE", "SHARED_PREFETCH_FACTOR", "REGISTER_PREFETCH_FACTOR" },
                         [] (const std::vector<uint64_t>& values) {
                             return values[0] == 1 || (values[1] == 0 && values[2] == 0);
+                        });
+
+    // different register prefetching implementations are used only when register prefetching is used
+    tuner.AddConstraint(kernel.kernel_id,
+                        { "REGISTER_PREFETCH_FACTOR", "REGISTER_PREFETCH_TYPE" },
+                        [] (const std::vector<uint64_t>& values) {
+                            return values[0] > 0 || values[1] == 0;
                         });
 }
 
