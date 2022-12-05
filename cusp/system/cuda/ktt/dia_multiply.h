@@ -24,8 +24,9 @@ inline void setup_tuning_parameters(::ktt::Tuner& tuner, const kernel_context& k
 {
     tuner.AddParameter(kernel.kernel_id, "KERNEL_TYPE", std::vector<uint64_t>{ 0, 1 });
     tuner.AddParameter(kernel.kernel_id, "SHARED_PREFETCH_FACTOR", std::vector<uint64_t>{ 0, 2, 4, 8 });
-    tuner.AddParameter(kernel.kernel_id, "REGISTER_PREFETCH_FACTOR", std::vector<uint64_t>{ 0, 1, 2, 3 });
+    tuner.AddParameter(kernel.kernel_id, "REGISTER_PREFETCH_FACTOR", std::vector<uint64_t>{ 0, 2, 3, 4 });
     tuner.AddParameter(kernel.kernel_id, "REGISTER_PREFETCH_TYPE", std::vector<uint64_t>{ 0, 1 });
+    tuner.AddParameter(kernel.kernel_id, "LOAD_TYPE", std::vector<uint64_t>{ 0, 1 });
 
     // only one type of prefetching can be applied at once
     tuner.AddConstraint(kernel.kernel_id,
@@ -41,7 +42,7 @@ inline void setup_tuning_parameters(::ktt::Tuner& tuner, const kernel_context& k
                             return values[0] == 1 || (values[1] == 0 && values[2] == 0);
                         });
 
-    // different register prefetching implementations are used only when register prefetching is used
+    // different register prefetching implementations are used only when register prefetching is enabled
     tuner.AddConstraint(kernel.kernel_id,
                         { "REGISTER_PREFETCH_FACTOR", "REGISTER_PREFETCH_TYPE" },
                         [] (const std::vector<uint64_t>& values) {

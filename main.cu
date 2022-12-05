@@ -639,7 +639,7 @@ void test_matrix()
     //     //"l2_global_load_bytes"
     // });
 
-    std::cout << size_str(dia_problem_size(A.num_rows, A.num_cols, A.diagonal_offsets.size())) << "\n";
+    std::cout << "Device memory needed: " << size_str(dia_problem_size(A.num_rows, A.num_cols, A.diagonal_offsets.size())) << "\n";
     // cusp::ktt::tune(A, x, y);
 
     // auto conf1 = tuner.CreateConfiguration(kernel_ctx.kernel_id, { { std::string("KERNEL_TYPE"), uint64_t(0) } });
