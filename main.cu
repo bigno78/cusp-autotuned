@@ -14,8 +14,50 @@
 #include <type_traits>
 #include <sstream>
 #include <iomanip>
+#include <fstream>
 
 namespace krn = std::chrono;
+
+template<typename T, typename U, typename V>
+void write_csv(const std::vector<std::vector<T>>& data,
+               const std::vector<U>& col_labels,
+               const std::vector<V>& row_labels,
+               const std::string& path)
+{
+    if (row_labels.size() != data.size())
+        throw std::runtime_error("Weird number of rows or row labels.");
+
+    for (int i = 1; i < data.size(); ++i)
+    {
+        if (data[i].size() != data[i-1].size())
+            throw std::runtime_error("Not all rows have same length.");
+        if (i == 1 && data[i].size() != col_labels.size())
+            throw std::runtime_error("Bad number of column lables.");
+    }
+
+    std::ofstream file(path);
+
+    if (!file)
+        throw std::runtime_error("Cannot open: " + path);
+
+    const char* sep = "";
+    for (const auto& label : col_labels)
+    {
+        file << sep << label;
+        sep = ",";
+    }
+    file << "\n";
+
+    for (int i = 0; i < data.size(); ++i)
+    {
+        file << row_labels[i];
+        for (const auto& x : data[i])
+        {
+            file << "," << x;
+        }
+        file << "\n";
+    }
+}
 
 
 struct Timer
@@ -269,6 +311,33 @@ convert2(const cusp::coo_matrix<IndexType, ValueType, cusp::host_memory>& matrix
     return res;
 }
 
+template<template<typename, typename, typename> typename Matrix,
+         typename IndexType,
+         typename ValueType>
+Matrix<IndexType, ValueType, cusp::device_memory>
+send_to_device(const Matrix<IndexType, ValueType, cusp::host_memory>& host_matrix)
+{
+    return host_matrix;
+}
+
+template<template<typename, typename, typename> typename Matrix,
+         typename IndexType,
+         typename ValueType,
+         typename MemorySpace>
+auto make_test_device_x(const Matrix<IndexType, ValueType, MemorySpace>& matrix)
+{
+    return cusp::array1d<ValueType, cusp::device_memory>(matrix.num_cols, 1);
+}
+
+template<template<typename, typename, typename> typename Matrix,
+         typename IndexType,
+         typename ValueType,
+         typename MemorySpace>
+auto make_test_device_y(const Matrix<IndexType, ValueType, MemorySpace>& matrix)
+{
+    return cusp::array1d<ValueType, cusp::device_memory>(matrix.num_rows, 0);
+}
+
 template<typename IndexType, typename ValueType>
 bool equals(const cusp::dia_matrix<IndexType, ValueType, cusp::host_memory>& A,
             const cusp::dia_matrix<IndexType, ValueType, cusp::host_memory>& B)
@@ -353,7 +422,7 @@ size_t min_read_bytes(const cusp::dia_matrix<IndexT, ValueT, MemorySpace>& A)
     {
         IndexT start_row = offset >= 0 ? 0 : -offset;
         IndexT start_col = offset >= 0 ? offset : 0;
-        IndexT end_row = std::min(A.num_cols - start_col, A.num_rows - start_row);
+        IndexT end_row = start_row + std::min(A.num_cols - start_col, A.num_rows - start_row);
 
         // Assume that global reads are done in 32 byte transactions that must be aligned.
         IndexT elems_per_read = 32 / sizeof(ValueT);
@@ -371,7 +440,8 @@ profile_multiply(const cusp::dia_matrix<int, float, cusp::device_memory>& A,
                  const cusp::array1d<float, cusp::device_memory>& x,
                  cusp::array1d<float, cusp::device_memory>& y,
                  const ::ktt::KernelConfiguration& conf,
-                 const std::vector<std::string>& counters)
+                 const std::vector<std::string>& counters,
+                ::ktt::KernelResult& result)
 {
     auto& tuner = cusp::ktt::get_tuner();
 
@@ -385,6 +455,8 @@ profile_multiply(const cusp::dia_matrix<int, float, cusp::device_memory>& A,
     do {
         kernel_result = cusp::ktt::multiply(A, x, y, conf, true);
     } while(kernel_result.HasRemainingProfilingRuns());
+
+    result = kernel_result;
 
     for (const auto& computation_result : kernel_result.GetResults())
     {
@@ -412,9 +484,13 @@ size_t get_actual_read_bytes(::ktt::Tuner& tuner,
                              const cusp::dia_matrix<int, float, cusp::device_memory>& A,
                              const cusp::array1d<float, cusp::device_memory>& x,
                              cusp::array1d<float, cusp::device_memory>& y,
-                             const ::ktt::KernelConfiguration& conf)
+                             const ::ktt::KernelConfiguration& conf,
+                             ::ktt::KernelResult* res_p = nullptr)
 {
-    const auto& counters = profile_multiply(A, x, y, conf, {"dram_read_bytes"});
+    ::ktt::KernelResult res;
+    const auto& counters = profile_multiply(A, x, y, conf, {"dram_read_bytes"}, res);
+
+    if (res_p) *res_p = res;
 
     if (counters.empty()) {
         throw std::runtime_error("Profiling failed.");
@@ -424,17 +500,22 @@ size_t get_actual_read_bytes(::ktt::Tuner& tuner,
 }
 
 size_t get_actual_read_bytes(::ktt::Tuner& tuner,
-                             const cusp::dia_matrix<int, float, cusp::host_memory>& host_matrix)
+                             const cusp::dia_matrix<int, float, cusp::host_memory>& host_matrix,
+                             ::ktt::KernelResult* res_p = nullptr)
 {
     cusp::dia_matrix<int, float, cusp::device_memory> A = host_matrix;
     cusp::array1d<float, cusp::device_memory> x(A.num_cols, 1);
     cusp::array1d<float, cusp::device_memory> y(A.num_rows);
 
     auto kernel_ctx = cusp::system::cuda::ktt::get_kernel(tuner, A, x, y);
-    auto conf = tuner.CreateConfiguration(kernel_ctx.kernel_id, { { std::string("KERNEL_TYPE"), uint64_t(1) },
-                                                                  { std::string("PREFETCH_FACTOR"), uint64_t(0) } });
+    // auto conf = tuner.CreateConfiguration(kernel_ctx.kernel_id, { { std::string("KERNEL_TYPE"), uint64_t(1) },
+    //                                                               { std::string("PREFETCH_FACTOR"), uint64_t(0) } });
+    auto conf = tuner.CreateConfiguration(kernel_ctx.kernel_id,
+                                          { { std::string("KERNEL_TYPE"), uint64_t(1) },
+                                            { std::string("REGISTER_PREFETCH_FACTOR"), uint64_t(0) },
+                                            { std::string("SHARED_PREFETCH_FACTOR"), uint64_t(0) } });
 
-    return get_actual_read_bytes(tuner, A, x, y, conf);
+    return get_actual_read_bytes(tuner, A, x, y, conf, res_p);
 }
 
 int get_max_size(int num_diags, size_t global_size)
@@ -526,10 +607,79 @@ void test_poisson_7pt(::ktt::Tuner& tuner, size_t global_limit)
     }
 }
 
+void test_x_caching_uniform(::ktt::Tuner& tuner, size_t global_limit)
+{
+    std::vector<int> distances;
+    std::vector<int> diag_counts;
+
+    for (int dist = 64; dist <= 2048; dist *= 2)
+        distances.push_back(dist);
+
+    for (int count = 64; count <= 2048; count *= 2)
+        diag_counts.push_back(count + 1);
+
+    std::vector<std::vector<float>> bytes;
+    std::vector<std::vector<size_t>> times;
+
+    std::cout << "TESTING UNIFORM MATRICES\n"
+              << "Taget device memory: " << size_str(global_limit) << "\n";
+
+    for (auto dist : distances)
+    {
+        std::cout << "Distance: " << dist << "\n";
+        bytes.emplace_back();
+        times.emplace_back();
+
+        ::ktt::KernelResult kernel_result;
+        size_t reference_time = 1;
+
+        for (auto diag_count : diag_counts)
+        {
+            size_t n = get_max_size(diag_count, global_limit);
+            if (n < 1024) // That is too small.
+            {
+                std::cout << "skipping\n";
+                bytes.back().push_back(-1);
+                times.back().push_back(0);
+                continue;
+            }
+
+            auto host_matrix = cusp::ktt::make_diagonal_symmetric_matrix(n, n, dist, diag_count);
+
+            if (host_matrix.diagonal_offsets.size() != diag_count)
+            {
+                std::cout << "skipping\n";
+                bytes.back().push_back(-1);
+                times.back().push_back(0);
+                continue;
+            }
+
+            auto expected_bytes = min_read_bytes(host_matrix);
+            auto actual_bytes = get_actual_read_bytes(tuner, host_matrix, &kernel_result);
+            float ratio = float(actual_bytes)/expected_bytes;
+
+            if (reference_time == 1)
+            {
+                reference_time = kernel_result.GetKernelDuration();
+            }
+
+            size_t time = kernel_result.GetKernelDuration();
+            float time_ratio = float(time)/reference_time;
+
+            std::cout << diag_count << "(" << n << ") -> " << ratio << "(" << actual_bytes << " : " << expected_bytes << ")\n";
+                     // << " (" << time_ratio << " : " << time << ")\n";
+
+            bytes.back().push_back(ratio);
+            times.back().push_back(time);
+        }
+    }
+
+    write_csv(bytes, distances, diag_counts, "bytes_transfered.csv");
+}
+
 void test_l2()
 {
     auto& tuner = cusp::ktt::get_tuner();
-
     tuner.SetLoggingLevel(::ktt::LoggingLevel::Off);
 
     cudaDeviceProp prop;
@@ -540,15 +690,15 @@ void test_l2()
         return;
     }
 
-    size_t max_bytes = std::min(5*(size_t(1) << 30), (size_t)prop.totalGlobalMem - 1024*(size_t(1) << 20));
-    size_t max_floats = max_bytes/sizeof(float);
+    size_t max_bytes = std::min(2*(size_t(1) << 30), (size_t)prop.totalGlobalMem - 1024*(size_t(1) << 20));
 
     std::cout << "L2 size: " << size_str(prop.l2CacheSize) << "\n";
     std::cout << "Global memory available: " << size_str(prop.totalGlobalMem) << "\n";
     std::cout << "Global limit: " << size_str(max_bytes) << "\n";
 
-    test_poisson_sizes(tuner, max_bytes);
-    test_poisson_7pt(tuner, max_bytes);
+    //test_poisson_sizes(tuner, max_bytes);
+    //test_poisson_7pt(tuner, max_bytes);
+    test_x_caching_uniform(tuner, max_bytes);
 
     // std::cout << "Using size: " << size_str(max_bytes) << "\n";
 
@@ -611,18 +761,21 @@ void test_matrix()
 {
     auto& tuner = cusp::ktt::get_tuner();
 
-    int n = 8*(1u << 20);
+    int n = 130879;
 
-    n = get_max_size(5, 2*(size_t(1) << 30));
-    int grid_size = std::sqrt(n);
-    cusp::dia_matrix<int, float, cusp::host_memory> dia_host_matrix;
-    cusp::gallery::poisson5pt(dia_host_matrix, grid_size, grid_size);
+    //n = get_max_size(5, 2*(size_t(1) << 30));
+    //int grid_size = std::sqrt(n);
+    //cusp::dia_matrix<int, float, cusp::host_memory> dia_host_matrix;
+    //cusp::gallery::poisson5pt(dia_host_matrix, grid_size, grid_size);
 
-    // auto dia_host_matrix = cusp::ktt::make_diagonal_symmetric_matrix(n, n, 1, 64);
+    auto dia_host_matrix = cusp::ktt::make_diagonal_symmetric_matrix(n, n, 512, 2049);
+
+    std::cout << min_read_bytes(dia_host_matrix) << "\n";
 
     cusp::dia_matrix<int, float, cusp::device_memory> A = dia_host_matrix;
     cusp::array1d<float, cusp::device_memory> x(A.num_cols, 1);
     cusp::array1d<float, cusp::device_memory> y(A.num_rows);
+    cusp::array1d<float, cusp::device_memory> yy(A.num_rows);
 
     // cusp::io::write_matrix_market_file(dia_host_matrix, "matrix.mtx");
 
@@ -645,6 +798,11 @@ void test_matrix()
     // auto conf1 = tuner.CreateConfiguration(kernel_ctx.kernel_id, { { std::string("KERNEL_TYPE"), uint64_t(0) } });
     // cusp::ktt::multiply(A, x, y, conf1);
 
+    auto conf = tuner.CreateConfiguration(kernel_ctx.kernel_id,
+                                          { { std::string("KERNEL_TYPE"), uint64_t(1) },
+                                            { std::string("REGISTER_PREFETCH_FACTOR"), uint64_t(0) },
+                                            { std::string("SHARED_PREFETCH_FACTOR"), uint64_t(0) } });
+
     auto conf2 = tuner.CreateConfiguration(kernel_ctx.kernel_id, { { std::string("KERNEL_TYPE"), uint64_t(1) },
                                                                    { std::string("REGISTER_PREFETCH_FACTOR"), uint64_t(0) },
                                                                    { std::string("SHARED_PREFETCH_FACTOR"), uint64_t(4) } });
@@ -654,12 +812,34 @@ void test_matrix()
     //                                                           { std::string("PREFETCH_FACTOR"), uint64_t(0) } });
     // size_t cached = get_actual_read_bytes(tuner, A, x, y, conf2);
 
+    std::cout << A.diagonal_offsets[0] << "\n";
+
+    cusp::ktt::disable();
+    cusp::multiply(A, x, yy);
+    cusp::ktt::enable();
+
+    cusp::ktt::multiply(A, x, y, conf);
+
+    if (y == yy) {
+        std::cout << "GOOD!\n";
+    } else {
+        std::cout << "WRONG!\n";
+    }
+
+    for (int i = 0; i < y.size(); ++i)
+    {
+        if (y[i] != yy[i])
+        {
+            std::cout << i << " -> " << y[i] - yy[i] << "\n";
+        }
+    }
+
     // std::cout << "non_cached: " << size_str(non_cached) << "\n";
     // std::cout << "cached:     " << size_str(cached) << "\n";
 
     // std::cout << tuner.GetPtxSource(kernel_ctx.kernel_id, kernel_ctx.definition_ids[0], conf2) << "\n";
 
-    cusp::ktt::tune(A, x, y);
+    // cusp::ktt::tune(A, x, y);
     // cusp::ktt::multiply(A, x, y, conf2);
     // for (int i = 0; i < 10; ++i)
     // {
@@ -687,8 +867,8 @@ int main(void)
     auto& tuner = cusp::ktt::get_tuner();
     tuner.SetTimeUnit(::ktt::TimeUnit::Microseconds);
 
-    // test_l2();
-    test_matrix();
+    test_l2();
+    // test_matrix();
 
     // auto orig = cusp::ktt::make_diagonal_symmetric_matrix(4096, 4096, 4, 256);
     // cusp::coo_matrix<int, float, cusp::device_memory> A = orig;

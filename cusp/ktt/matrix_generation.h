@@ -43,14 +43,16 @@ make_diagonal_symmetric_matrix(int rows,
 
     for (int i = 0; i < diagonal_count; ++i) {
         int offset = starting_offset + offset_step*i;
-        offsets.push_back(offset);
 
         int starting_row = offset < 0 ? -offset : 0;
         int starting_col = offset < 0 ? 0 : offset;
 
-        int ending_row = starting_row >= rows || starting_col >= cols
-                            ? 0
-                            : starting_row + std::min(rows - starting_row, cols - starting_col);
+        if (starting_row >= rows || starting_col >= cols)
+            continue;
+
+        offsets.push_back(offset);
+
+        int ending_row = starting_row + std::min(rows - starting_row, cols - starting_col);
 
         for (int row = starting_row; row < ending_row; ++row) {
             num_entries++;
