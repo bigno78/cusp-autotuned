@@ -3,6 +3,7 @@
 #include <cusp/dia_matrix.h>
 
 #include <algorithm> // min
+#include <stdexcept>
 
 namespace cusp {
 
@@ -48,7 +49,7 @@ make_diagonal_symmetric_matrix(int rows,
         int starting_col = offset < 0 ? 0 : offset;
 
         if (starting_row >= rows || starting_col >= cols)
-            continue;
+            throw std::runtime_error("make_diagonal_symmetric_matrix: Too many diagonals.");
 
         offsets.push_back(offset);
 
