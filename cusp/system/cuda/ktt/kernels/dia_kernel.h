@@ -2,11 +2,15 @@
 
 
 #if REGISTER_PREFETCH_FACTOR > 0
-#define PREFETCH_FACTOR REGISTER_PREFETCH_FACTOR
+    #define PREFETCH_FACTOR REGISTER_PREFETCH_FACTOR
 #elif SHARED_PREFETCH_FACTOR > 0
-#define PREFETCH_FACTOR SHARED_PREFETCH_FACTOR
+    #define PREFETCH_FACTOR SHARED_PREFETCH_FACTOR
 #else
-#define PREFETCH_FACTOR 0
+    #define PREFETCH_FACTOR 0
+#endif
+
+#ifndef BLOCK_SIZE
+    #define BLOCK_SIZE 256
 #endif
 
 
@@ -110,8 +114,7 @@ struct UnrolledLoop<IndexType, ValueType1, ValueType2, 0>
 template <typename IndexType,
           typename ValueType1,
           typename ValueType2,
-          typename ValueType3,
-          unsigned int BLOCK_SIZE>
+          typename ValueType3>
 __device__ void
 naive_dia_kernel(const int num_rows,
                  const int num_cols,
@@ -155,8 +158,7 @@ naive_dia_kernel(const int num_rows,
 template <typename IndexType,
           typename ValueType1,
           typename ValueType2,
-          typename ValueType3,
-          unsigned int BLOCK_SIZE>
+          typename ValueType3>
 __device__ void
 blocked_offsets_dia_kernel(const int num_rows,
                            const int num_cols,
@@ -288,8 +290,237 @@ blocked_offsets_dia_kernel(const int num_rows,
 template <typename IndexType,
           typename ValueType1,
           typename ValueType2,
-          typename ValueType3,
-          unsigned int BLOCK_SIZE>
+          typename ValueType3>
+__device__ void
+striped_dia_kernel(const int num_rows,
+                           const int num_cols,
+                           const int num_diagonals,
+                           const int pitch,
+                           const IndexType* diagonal_offsets,
+                           const ValueType1* values,
+                           const ValueType2* x,
+                           ValueType3* y)
+{
+#ifdef STRIPING_FACTOR
+    const IndexType num_groups = STRIPING_FACTOR;
+#else
+    const IndexType num_groups = 1;
+#endif
+
+    const IndexType group_size = BLOCK_SIZE/num_groups;
+    const IndexType stride = num_rows/num_groups;
+
+    const IndexType thread_id = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+
+    const IndexType group_id = threadIdx.x / group_size;
+    const IndexType group_lane_id = threadIdx.x % group_size;
+
+    const IndexType row = group_id*stride + blockIdx.x*group_size
+                            + group_lane_id;
+
+    // printf("(%d, %d, %d)-> %d\n", blockIdx.x, threadIdx.x, thread_id, row);
+
+    __shared__ IndexType offsets[BLOCK_SIZE];
+    ValueType3 sum = ValueType3(0);
+
+    for (int offset_base = 0; offset_base < num_diagonals; offset_base += BLOCK_SIZE)
+    {
+        if (offset_base + threadIdx.x < num_diagonals)
+        {
+            offsets[threadIdx.x] = diagonal_offsets[offset_base + threadIdx.x];
+        }
+
+        __syncthreads();
+
+        int batch_size = BLOCK_SIZE > num_diagonals - offset_base ? num_diagonals - offset_base : BLOCK_SIZE;
+
+        if (row < num_rows)
+        {
+            for (IndexType i = 0; i < batch_size; ++i)
+            {
+                IndexType col = offsets[i] + row;
+                if (col >= 0 && col < num_cols)
+                {
+                    auto diag_val = load_diag_val(&values[ (offset_base + i)*pitch + row ]);
+                    auto x_val = load_x_val(&x[col]);
+
+                    sum += diag_val*x_val;
+                }
+            }
+        }
+
+        __syncthreads();
+    }
+
+    if (row < num_rows)
+        y[row] = sum;
+}
+
+
+// template <typename IndexType,
+//           typename ValueType1,
+//           typename ValueType2,
+//           typename ValueType3>
+// __device__ void
+// double_striped_dia_kernel(const int num_rows,
+//                            const int num_cols,
+//                            const int num_diagonals,
+//                            const int pitch,
+//                            const IndexType* diagonal_offsets,
+//                            const ValueType1* values,
+//                            const ValueType2* x,
+//                            ValueType3* y)
+// {
+// #ifdef STRIPING_FACTOR
+//     const IndexType desired_distance = 256;
+//     const IndexType warps_per_stripe = 1;
+// #else
+//     const IndexType desired_distance = 256;
+//     const IndexType warps_per_stripe = 1;
+// #endif
+
+//     IndexType stripes_needed =
+//         (num_rows + desired_distance - 1) / desired_distance;
+
+//     IndexType warps_needed = 32 * stripes_needed;
+//     IndexType warps_available = BLOCK_SIZE / 32;
+
+//     IndexType num_sectors;
+//     if (warps_needed < warps_available)
+//     {
+//         // we dont need multiple sectors
+//     }
+//     else
+//     {
+//         IndexType num_sectors = warps_needed / warps_available;
+//         IndexType blocks_per_sector = gridDim.x / num_sectors;
+
+//         IndexType sector_id = blockIdx.x / blocks_per_sector;
+//         IndexType stripe_id = threadIdx.x / 32;
+//         IndexType lane_id = threadIdx.x % 32;
+//     }
+
+//     const IndexType group_size = BLOCK_SIZE/num_groups;
+//     const IndexType stride = num_rows/num_groups;
+
+//     const IndexType thread_id = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+
+//     const IndexType group_id = threadIdx.x / group_size;
+//     const IndexType group_lane_id = threadIdx.x % group_size;
+
+//     const IndexType row = group_id*stride + blockIdx.x*group_size
+//                             + group_lane_id;
+
+//     // printf("(%d, %d, %d)-> %d\n", blockIdx.x, threadIdx.x, thread_id, row);
+
+//     __shared__ IndexType offsets[BLOCK_SIZE];
+//     ValueType3 sum = ValueType3(0);
+
+//     for (int offset_base = 0; offset_base < num_diagonals; offset_base += BLOCK_SIZE)
+//     {
+//         if (offset_base + threadIdx.x < num_diagonals)
+//         {
+//             offsets[threadIdx.x] = diagonal_offsets[offset_base + threadIdx.x];
+//         }
+
+//         __syncthreads();
+
+//         int batch_size = BLOCK_SIZE > num_diagonals - offset_base ? num_diagonals - offset_base : BLOCK_SIZE;
+
+//         if (row < num_rows)
+//         {
+//             for (IndexType i = 0; i < batch_size; ++i)
+//             {
+//                 IndexType col = offsets[i] + row;
+//                 if (col >= 0 && col < num_cols)
+//                 {
+//                     auto diag_val = load_diag_val(&values[ (offset_base + i)*pitch + row ]);
+//                     auto x_val = load_x_val(&x[col]);
+
+//                     sum += diag_val*x_val;
+//                 }
+//             }
+//         }
+
+//         __syncthreads();
+//     }
+
+//     if (row < num_rows)
+//         y[row] = sum;
+// }
+
+
+template <typename IndexType,
+          typename ValueType1,
+          typename ValueType2,
+          typename ValueType3>
+__global__ void
+timed_dia_kernel(const int num_rows,
+                           const int num_cols,
+                           const int num_diagonals,
+                           const int pitch,
+                           const IndexType* diagonal_offsets,
+                           const ValueType1* values,
+                           const ValueType2* x,
+                           ValueType3* y,
+                           long long int* times,
+                           const int times_pitch)
+{
+    const IndexType thread_id = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    const IndexType row = thread_id;
+
+    __shared__ IndexType offsets[BLOCK_SIZE];
+    ValueType3 sum = ValueType3(0);
+
+    for (int offset_base = 0; offset_base < num_diagonals; offset_base += BLOCK_SIZE)
+    {
+        if (offset_base + threadIdx.x < num_diagonals)
+        {
+            offsets[threadIdx.x] = diagonal_offsets[offset_base + threadIdx.x];
+        }
+
+        __syncthreads();
+
+        int batch_size = BLOCK_SIZE > num_diagonals - offset_base ? num_diagonals - offset_base : BLOCK_SIZE;
+
+        if (row < num_rows)
+        {
+            for (IndexType i = 0; i < batch_size; ++i)
+            {
+                IndexType col = offsets[i] + row;
+                if (col >= 0 && col < num_cols)
+                {
+                    auto diag_val = load_diag_val(&values[ (offset_base + i)*pitch + row ]);
+                    auto to_load = &x[col];
+
+                    long long int start = clock64();
+                    auto x_val = load_x_val(to_load);
+                    long long int end = clock64();
+
+                    if (threadIdx.x % 32 == 0)
+                    {
+                        IndexType k = row / 32;
+                        __stwt(times + (offset_base + i)*times_pitch + k, end - start + 1);
+                    }
+
+                    sum += diag_val*x_val;
+                }
+            }
+        }
+
+        __syncthreads();
+    }
+
+    if (row < num_rows)
+        y[row] = sum;
+}
+
+
+
+template <typename IndexType,
+          typename ValueType1,
+          typename ValueType2,
+          typename ValueType3>
 __device__ void
 cached_x_dia_kernel(const int num_rows,
                     const int num_cols,
@@ -358,8 +589,7 @@ cached_x_dia_kernel(const int num_rows,
 template <typename IndexType,
           typename ValueType1,
           typename ValueType2,
-          typename ValueType3,
-          unsigned int BLOCK_SIZE>
+          typename ValueType3>
 __device__ void
 experimental_dia_kernel(const int num_rows,
                     const int num_cols,
@@ -425,8 +655,7 @@ experimental_dia_kernel(const int num_rows,
 template <typename IndexType,
           typename ValueType1,
           typename ValueType2,
-          typename ValueType3,
-          unsigned int BLOCK_SIZE>
+          typename ValueType3>
 __device__ void
 cached_x_naive_dia_kernel(const int num_rows,
                  const int num_cols,
@@ -472,8 +701,7 @@ cached_x_naive_dia_kernel(const int num_rows,
 template <typename IndexType,
           typename ValueType1,
           typename ValueType2,
-          typename ValueType3,
-          unsigned int BLOCK_SIZE>
+          typename ValueType3>
 __launch_bounds__(BLOCK_SIZE,1) __global__ void
 ktt_dia_vector_kernel(
                 const int num_rows,
@@ -486,19 +714,19 @@ ktt_dia_vector_kernel(
                 ValueType3* y)
 {
 #if KERNEL_TYPE == 0
-    naive_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3, BLOCK_SIZE>
+    naive_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
         (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
 #elif KERNEL_TYPE == 1
-    blocked_offsets_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3, BLOCK_SIZE>
+    blocked_offsets_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
         (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
 #elif KERNEL_TYPE == 2
-    cached_x_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3, BLOCK_SIZE>
+    striped_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
         (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
 #elif KERNEL_TYPE == 3
-    experimental_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3, BLOCK_SIZE>
+    experimental_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
         (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
 // #elif KERNEL_TYPE == 4
-//     cached_x_naive_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3, BLOCK_SIZE>
+//     cached_x_naive_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
 //         (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
 #endif
 }

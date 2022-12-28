@@ -22,11 +22,24 @@ namespace dia {
 
 inline void setup_tuning_parameters(::ktt::Tuner& tuner, const kernel_context& kernel)
 {
-    tuner.AddParameter(kernel.kernel_id, "KERNEL_TYPE", std::vector<uint64_t>{ 0, 1 });
+    tuner.AddParameter(kernel.kernel_id, "KERNEL_TYPE", std::vector<uint64_t>{ 0, 1, 2 });
     tuner.AddParameter(kernel.kernel_id, "SHARED_PREFETCH_FACTOR", std::vector<uint64_t>{ 0, 2, 4, 8 });
     tuner.AddParameter(kernel.kernel_id, "REGISTER_PREFETCH_FACTOR", std::vector<uint64_t>{ 0, 2, 3, 4 });
     tuner.AddParameter(kernel.kernel_id, "REGISTER_PREFETCH_TYPE", std::vector<uint64_t>{ 0, 1 });
     tuner.AddParameter(kernel.kernel_id, "LOAD_TYPE", std::vector<uint64_t>{ 0, 1 });
+    tuner.AddParameter(kernel.kernel_id, "STRIPING_FACTOR", std::vector<uint64_t>{ 2, 4, 8 });
+    tuner.AddParameter(kernel.kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 256, 512 });
+
+    tuner.AddThreadModifier(
+        kernel.kernel_id,
+        { kernel.definition_ids[0] },
+        ::ktt::ModifierType::Local,
+        ::ktt::ModifierDimension::X,
+        { std::string("BLOCK_SIZE") },
+        [] (const uint64_t defaultSize, const std::vector<uint64_t>& parameters) {
+            return parameters[0];
+        }
+    );
 
     // only one type of prefetching can be applied at once
     tuner.AddConstraint(kernel.kernel_id,
@@ -48,6 +61,13 @@ inline void setup_tuning_parameters(::ktt::Tuner& tuner, const kernel_context& k
                         [] (const std::vector<uint64_t>& values) {
                             return values[0] > 0 || values[1] == 0;
                         });
+
+    // don't try different striping factors for non-striped kernels
+    tuner.AddConstraint(kernel.kernel_id,
+                    { "KERNEL_TYPE", "STRIPING_FACTOR" },
+                    [] (const std::vector<uint64_t>& values) {
+                        return values[0] == 2 || values[1] == 2;
+                    });
 }
 
 } // namespace dia
@@ -60,21 +80,20 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner, cusp::dia_format)
 
     std::string kernel_path = STRING(CUSP_PATH) "/cusp/system/cuda/ktt/kernels/dia_kernel.h";
 
-    const size_t BLOCK_SIZE = 256;
-    const size_t MAX_BLOCKS = cusp::system::cuda::detail::max_active_blocks(
-                                ktt_dia_vector_kernel<IndexType, ValueType1, ValueType2, ValueType3, BLOCK_SIZE>,
-                                BLOCK_SIZE, 0);
+    const size_t block_size = 256;
+    const size_t max_blocks = cusp::system::cuda::detail::max_active_blocks(
+                                ktt_dia_vector_kernel<IndexType, ValueType1, ValueType2, ValueType3>,
+                                block_size, 0);
 
     std::vector< std::string > type_names {
         std::string(NAMEOF_TYPE(IndexType)),
         std::string(NAMEOF_TYPE(ValueType1)),
         std::string(NAMEOF_TYPE(ValueType2)),
-        std::string(NAMEOF_TYPE(ValueType3)),
-        std::to_string(BLOCK_SIZE)
+        std::string(NAMEOF_TYPE(ValueType3))
     };
 
-    const ::ktt::DimensionVector blockDimensions(BLOCK_SIZE);
-    const ::ktt::DimensionVector gridDimensions(MAX_BLOCKS);
+    const ::ktt::DimensionVector blockDimensions(block_size);
+    const ::ktt::DimensionVector gridDimensions(max_blocks);
 
     auto definition_id = tuner.AddKernelDefinitionFromFile(
         "ktt_dia_vector_kernel",
@@ -132,7 +151,8 @@ auto get_launcher(const kernel_context& ctx,
                   size_t num_cols,
                   bool profile = false)
 {
-    return [=] (::ktt::ComputeInterface& interface) {
+    return [=] (::ktt::ComputeInterface& interface)
+    {
         ::ktt::DimensionVector block_size = interface.GetCurrentLocalSize(ctx.definition_ids[0]);
         ::ktt::DimensionVector grid_size( DIVIDE_INTO(num_rows, block_size.GetSizeX()) );
 
