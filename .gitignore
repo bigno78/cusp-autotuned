@@ -122,3 +122,4 @@ performance/spmm/spmm
 *.user
 
 .vscode
+a.out
