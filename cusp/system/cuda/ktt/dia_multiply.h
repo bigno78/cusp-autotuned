@@ -30,6 +30,20 @@ inline void setup_tuning_parameters(::ktt::Tuner& tuner, const kernel_context& k
     tuner.AddParameter(kernel.kernel_id, "STRIPING_FACTOR", std::vector<uint64_t>{ 2, 4, 8 });
     tuner.AddParameter(kernel.kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 256, 512 });
 
+    // START OF HACKS ---------------------
+    tuner.AddParameter(kernel.kernel_id, "BLOCKS_PER_SECTOR", std::vector<uint64_t>{ 0 });
+    tuner.AddParameter(kernel.kernel_id, "CHUNK_SIZE", std::vector<uint64_t>{ 0 });
+    tuner.AddParameter(kernel.kernel_id, "STRIPE_SIZE", std::vector<uint64_t>{ 0 });
+    tuner.AddParameter(kernel.kernel_id, "GRID_SIZE", std::vector<uint64_t>{ 0 });
+    tuner.AddParameter(kernel.kernel_id, "SECTOR_MAPPING_TYPE",
+                       std::vector<uint64_t>{ 0, 1 });
+
+    tuner.AddConstraint(kernel.kernel_id, { "SECTOR_MAPPING_TYPE" },
+                        [] (const std::vector<uint64_t>& values) {
+                            return values[0] == 0;
+                        });
+    // END OF HACKS -----------------------
+
     tuner.AddThreadModifier(
         kernel.kernel_id,
         { kernel.definition_ids[0] },
@@ -155,6 +169,11 @@ auto get_launcher(const kernel_context& ctx,
     {
         ::ktt::DimensionVector block_size = interface.GetCurrentLocalSize(ctx.definition_ids[0]);
         ::ktt::DimensionVector grid_size( DIVIDE_INTO(num_rows, block_size.GetSizeX()) );
+
+        auto conf = interface.GetCurrentConfiguration();
+        for (const auto& pair : conf.GetPairs())
+            if (pair.GetName() == "GRID_SIZE" && pair.GetValue() != 0)
+                grid_size = ::ktt::DimensionVector(pair.GetValue());
 
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);

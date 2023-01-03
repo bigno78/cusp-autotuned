@@ -357,97 +357,96 @@ striped_dia_kernel(const int num_rows,
 }
 
 
-// template <typename IndexType,
-//           typename ValueType1,
-//           typename ValueType2,
-//           typename ValueType3>
-// __device__ void
-// double_striped_dia_kernel(const int num_rows,
-//                            const int num_cols,
-//                            const int num_diagonals,
-//                            const int pitch,
-//                            const IndexType* diagonal_offsets,
-//                            const ValueType1* values,
-//                            const ValueType2* x,
-//                            ValueType3* y)
-// {
-// #ifdef STRIPING_FACTOR
-//     const IndexType desired_distance = 256;
-//     const IndexType warps_per_stripe = 1;
-// #else
-//     const IndexType desired_distance = 256;
-//     const IndexType warps_per_stripe = 1;
-// #endif
+template <typename IndexType,
+          typename ValueType1,
+          typename ValueType2,
+          typename ValueType3>
+__device__ void
+double_striped_dia_kernel(const int num_rows,
+                           const int num_cols,
+                           const int num_diagonals,
+                           const int pitch,
+                           const IndexType* diagonal_offsets,
+                           const ValueType1* values,
+                           const ValueType2* x,
+                           ValueType3* y)
+{
+#if KERNEL_TYPE == 3
+    IndexType blocks_per_sector = BLOCKS_PER_SECTOR;
+    IndexType stripe_size = STRIPE_SIZE;
+    IndexType chunk_size = CHUNK_SIZE;
+#else
+    IndexType blocks_per_sector = 0;
+    IndexType stripe_size = 0;
+    IndexType chunk_size = 0;
+    assert(false);
+#endif
 
-//     IndexType stripes_needed =
-//         (num_rows + desired_distance - 1) / desired_distance;
+#if SECTOR_MAPPING_TYPE == 0
+    IndexType sector_id = blockIdx.x / blocks_per_sector;
+    IndexType sector_lane_id = blockIdx.x % blocks_per_sector;
 
-//     IndexType warps_needed = 32 * stripes_needed;
-//     IndexType warps_available = BLOCK_SIZE / 32;
+    IndexType stripe_id = threadIdx.x / (chunk_size*32);
+    IndexType stripe_lane_id = threadIdx.x % (chunk_size*32);
 
-//     IndexType num_sectors;
-//     if (warps_needed < warps_available)
-//     {
-//         // we dont need multiple sectors
-//     }
-//     else
-//     {
-//         IndexType num_sectors = warps_needed / warps_available;
-//         IndexType blocks_per_sector = gridDim.x / num_sectors;
+    IndexType row = sector_id*blocks_per_sector*BLOCK_SIZE
+                    + stripe_id*stripe_size
+                    + sector_lane_id*chunk_size*32
+                    + stripe_lane_id;
+#elif SECTOR_MAPPING_TYPE == 1
+    IndexType num_sectors = gridDim.x / blocks_per_sector;
 
-//         IndexType sector_id = blockIdx.x / blocks_per_sector;
-//         IndexType stripe_id = threadIdx.x / 32;
-//         IndexType lane_id = threadIdx.x % 32;
-//     }
+    IndexType sector_id = blockIdx.x % num_sectors;
+    IndexType sector_lane_id = blockIdx.x / num_sectors;
 
-//     const IndexType group_size = BLOCK_SIZE/num_groups;
-//     const IndexType stride = num_rows/num_groups;
+    IndexType stripe_id = threadIdx.x / (chunk_size*32);
+    IndexType stripe_lane_id = threadIdx.x % (chunk_size*32);
 
-//     const IndexType thread_id = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    IndexType row = sector_id*blocks_per_sector*BLOCK_SIZE
+                    + stripe_id*stripe_size
+                    + sector_lane_id*chunk_size*32
+                    + stripe_lane_id;
+#endif
 
-//     const IndexType group_id = threadIdx.x / group_size;
-//     const IndexType group_lane_id = threadIdx.x % group_size;
+    IndexType thread_id = BLOCK_SIZE * blockIdx.x + threadIdx.x;
 
-//     const IndexType row = group_id*stride + blockIdx.x*group_size
-//                             + group_lane_id;
+    //printf("(%d, %d, %d) -> %d\n", blockIdx.x, threadIdx.x, thread_id, row);
 
-//     // printf("(%d, %d, %d)-> %d\n", blockIdx.x, threadIdx.x, thread_id, row);
+    __shared__ IndexType offsets[BLOCK_SIZE];
+    ValueType3 sum = ValueType3(0);
 
-//     __shared__ IndexType offsets[BLOCK_SIZE];
-//     ValueType3 sum = ValueType3(0);
+    for (int offset_base = 0; offset_base < num_diagonals; offset_base += BLOCK_SIZE)
+    {
+        if (offset_base + threadIdx.x < num_diagonals)
+        {
+            offsets[threadIdx.x] = diagonal_offsets[offset_base + threadIdx.x];
+        }
 
-//     for (int offset_base = 0; offset_base < num_diagonals; offset_base += BLOCK_SIZE)
-//     {
-//         if (offset_base + threadIdx.x < num_diagonals)
-//         {
-//             offsets[threadIdx.x] = diagonal_offsets[offset_base + threadIdx.x];
-//         }
+        __syncthreads();
 
-//         __syncthreads();
+        int batch_size = BLOCK_SIZE > num_diagonals - offset_base ? num_diagonals - offset_base : BLOCK_SIZE;
 
-//         int batch_size = BLOCK_SIZE > num_diagonals - offset_base ? num_diagonals - offset_base : BLOCK_SIZE;
+        if (row < num_rows)
+        {
+            for (IndexType i = 0; i < batch_size; ++i)
+            {
+                IndexType col = offsets[i] + row;
+                if (col >= 0 && col < num_cols)
+                {
+                    auto diag_val = load_diag_val(&values[ (offset_base + i)*pitch + row ]);
+                    auto x_val = load_x_val(&x[col]);
 
-//         if (row < num_rows)
-//         {
-//             for (IndexType i = 0; i < batch_size; ++i)
-//             {
-//                 IndexType col = offsets[i] + row;
-//                 if (col >= 0 && col < num_cols)
-//                 {
-//                     auto diag_val = load_diag_val(&values[ (offset_base + i)*pitch + row ]);
-//                     auto x_val = load_x_val(&x[col]);
+                    sum += diag_val*x_val;
+                }
+            }
+        }
 
-//                     sum += diag_val*x_val;
-//                 }
-//             }
-//         }
+        __syncthreads();
+    }
 
-//         __syncthreads();
-//     }
-
-//     if (row < num_rows)
-//         y[row] = sum;
-// }
+    if (row < num_rows)
+        y[row] = sum;
+}
 
 
 template <typename IndexType,
@@ -723,10 +722,7 @@ ktt_dia_vector_kernel(
     striped_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
         (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
 #elif KERNEL_TYPE == 3
-    experimental_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
+    double_striped_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
         (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
-// #elif KERNEL_TYPE == 4
-//     cached_x_naive_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
-//         (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
 #endif
 }
