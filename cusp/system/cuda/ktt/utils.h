@@ -3,6 +3,10 @@
 #include <Ktt.h>
 #include <cusp/system/cuda/ktt/kernel.h>
 
+#include <cstdint>   // uint64_t
+#include <stdexcept> // std::runtime_error
+
+
 #define STR(str) #str
 #define STRING(str) STR(str)
 
@@ -16,7 +20,7 @@ namespace ktt {
 
 template<typename T>
 void* cast(const T* ptr)
-{ 
+{
     return const_cast<void*>(static_cast<const void*>(ptr));
 }
 
@@ -65,7 +69,7 @@ void add_arg(::ktt::Tuner& tuner, std::vector<::ktt::ArgumentId>& argument_ids, 
     argument_ids.push_back(id);
 }
 
-template<typename... Args> 
+template<typename... Args>
 std::vector<::ktt::ArgumentId> add_arguments(::ktt::Tuner& tuner, Args&&... args)
 {
     std::vector<::ktt::ArgumentId> argument_ids;
@@ -84,6 +88,26 @@ inline void remove_arguments(const kernel_context& kernel, const std::vector<::k
     }
 }
 
+
+uint64_t get_parameter_uint(const ::ktt::KernelConfiguration& conf,
+                            const std::string& name)
+{
+    for (const auto& pair : conf.GetPairs())
+        if (pair.GetName() == name)
+            return pair.GetValue();
+
+    throw std::runtime_error("No paramater with name: " + name);
+}
+
+double get_parameter_double(const ::ktt::KernelConfiguration& conf,
+                            const std::string& name)
+{
+    for (const auto& pair : conf.GetPairs())
+        if (pair.GetName() == name)
+            return pair.GetValueDouble();
+
+    throw std::runtime_error("No paramater with name: " + name);
+}
 
 } // namespace ktt
 

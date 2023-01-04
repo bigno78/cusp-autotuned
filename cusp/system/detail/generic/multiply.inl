@@ -109,7 +109,7 @@ multiply(thrust::execution_policy<DerivedPolicy> &exec,
 
 template <typename T, typename /*U*/ = void>
 struct has_rebind : std::false_type {};
- 
+
 template <typename T>
 struct has_rebind<T, std::void_t<typename T::rebind<int>>> : std::true_type {};
 
@@ -128,11 +128,14 @@ multiply(cusp::system::cuda::detail::execution_policy<DerivedPolicy> &exec,
 {
     typedef typename LinearOperator::format  MatrixFormat;
 
-    if constexpr ((/*cusp::detail::is_csr<LinearOperator>::value ||*/ cusp::detail::is_dia<LinearOperator>::value) && has_rebind_v<LinearOperator>) {
+    if constexpr ((cusp::detail::is_csr<LinearOperator>::value
+                        || cusp::detail::is_dia<LinearOperator>::value)
+                    && has_rebind_v<LinearOperator>)
+    {
         if (cusp::ktt::detail::is_enabled) {
             cusp::ktt::detail::lazy_init();
             cusp::system::cuda::ktt::multiply(*cusp::ktt::detail::tuner, A, B, C);
-            return;    
+            return;
         }
     }
 

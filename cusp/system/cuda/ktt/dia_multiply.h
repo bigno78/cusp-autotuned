@@ -1,11 +1,14 @@
 #pragma once
 
-#include <cusp/ktt/detail/external/nameof.hpp>
-#include <cusp/system/cuda/arch.h> // max_active_blocks
+#include <cusp/detail/config.h>
 
-#include <cusp/system/cuda/ktt/kernels/dia_kernel.h>
 #include <cusp/system/cuda/ktt/kernel.h>
 #include <cusp/system/cuda/ktt/utils.h>
+#include <cusp/ktt/detail/external/nameof.hpp>
+
+#include <cusp/system/cuda/arch.h> // max_active_blocks
+#include <cusp/system/cuda/utils.h>
+#include <cusp/dia_matrix.h>
 
 #include <optional>
 #include <iostream>
@@ -94,11 +97,6 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner, cusp::dia_format)
 
     std::string kernel_path = STRING(CUSP_PATH) "/cusp/system/cuda/ktt/kernels/dia_kernel.h";
 
-    const size_t block_size = 256;
-    const size_t max_blocks = cusp::system::cuda::detail::max_active_blocks(
-                                ktt_dia_vector_kernel<IndexType, ValueType1, ValueType2, ValueType3>,
-                                block_size, 0);
-
     std::vector< std::string > type_names {
         std::string(NAMEOF_TYPE(IndexType)),
         std::string(NAMEOF_TYPE(ValueType1)),
@@ -106,8 +104,8 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner, cusp::dia_format)
         std::string(NAMEOF_TYPE(ValueType3))
     };
 
-    const ::ktt::DimensionVector blockDimensions(block_size);
-    const ::ktt::DimensionVector gridDimensions(max_blocks);
+    const ::ktt::DimensionVector blockDimensions(0);
+    const ::ktt::DimensionVector gridDimensions(0);
 
     auto definition_id = tuner.AddKernelDefinitionFromFile(
         "ktt_dia_vector_kernel",

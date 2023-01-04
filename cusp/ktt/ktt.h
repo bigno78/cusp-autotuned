@@ -1,8 +1,9 @@
 #pragma once
 
-#include <Ktt.h>
-
+#include <cusp/detail/config.h>
 #include <cusp/array1d.h>
+
+#include <Ktt.h>
 
 namespace cusp {
 
@@ -54,12 +55,13 @@ template <typename Matrix,
                             const ::ktt::KernelConfiguration& configuration,
                             bool run_with_profiling = false);
 
-template <typename IndexType,
+template <template<typename, typename, typename> typename Matrix,
+          typename IndexType,
           typename ValueType1,
           typename ValueType2,
           typename ValueType3>
 std::vector<::ktt::KernelResult>
-tune(const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
+tune(const Matrix<IndexType, ValueType1, cusp::device_memory>& A,
      const cusp::array1d<ValueType2, cusp::device_memory>& x,
      cusp::array1d<ValueType3, cusp::device_memory>& y,
      std::optional<::ktt::ReferenceComputation> reference_computation = std::nullopt);
