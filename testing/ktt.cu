@@ -31,7 +31,7 @@
 
 #define DECLARE_KTT_UNITTEST(VTEST)                     \
     DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST, Dia, dia) \
-    DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST, Csr, csr)
+    DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST, Ell, ell)
 
 
 struct UnitTestStopCondition : ::ktt::StopCondition

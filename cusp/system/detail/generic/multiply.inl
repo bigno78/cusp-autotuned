@@ -128,8 +128,8 @@ multiply(cusp::system::cuda::detail::execution_policy<DerivedPolicy> &exec,
 {
     typedef typename LinearOperator::format  MatrixFormat;
 
-    if constexpr ((cusp::detail::is_csr<LinearOperator>::value
-                        || cusp::detail::is_dia<LinearOperator>::value)
+    if constexpr ((cusp::detail::is_ell<LinearOperator>::value
+                    || cusp::detail::is_dia<LinearOperator>::value)
                     && has_rebind_v<LinearOperator>)
     {
         if (cusp::ktt::detail::is_enabled) {
