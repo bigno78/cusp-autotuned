@@ -4,8 +4,12 @@ __device__ T load_uncached(const T* addr)
 {
 #if UNCACHED_LOADS == 0
     return *addr;
-#else
+#elif UNCACHED_LOADS == 1
     return __ldcv(addr);
+#elif UNCACHED_LOADS == 2
+    return __ldcs(addr);
+#elif UNCACHED_LOADS == 3
+    return __ldlu(addr);
 #endif
 }
 
@@ -16,17 +20,12 @@ ktt_ell_kernel(const IndexType num_rows,
                 const IndexType num_cols,
                 const IndexType num_cols_per_row,
                 const IndexType pitch,
-                const IndexType * Aj,
-                const ValueType * Ax,
-                const ValueType * x,
-                ValueType * y)
+                const IndexType* __restrict__ Aj,
+                const ValueType* __restrict__ Ax,
+                const ValueType* __restrict__ x,
+                ValueType* __restrict__ y)
 {
     const IndexType row = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-
-    // if (row == 0)
-    // {
-    //     printf("Hello from ELL.\n");
-    // }
 
     if (row < num_rows)
     {
