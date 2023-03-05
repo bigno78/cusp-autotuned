@@ -19,9 +19,12 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
 
-    tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 128 });
-    tuner.AddParameter(kernel_id, "UNCACHED_LOADS",
-                        std::vector<uint64_t>{ 0, 1 });
+    tuner.AddParameter(kernel_id, "BLOCK_SIZE",      u64_vec{ 128 });
+    tuner.AddParameter(kernel_id, "BREAK",           u64_vec{ 0, 1 });
+    tuner.AddParameter(kernel_id, "UNCACHED_LOADS",  u64_vec{ 0, 1 });
+    tuner.AddParameter(kernel_id, "DISABLE_UNROLL",  u64_vec{ 0, 1 });
+    tuner.AddParameter(kernel_id, "PREFETCH_FACTOR", u64_vec{ 0, 2, 4 });
+    tuner.AddParameter(kernel_id, "THREADS_PER_ROW", u64_vec{ 1, 2, 4 });
 
     tuner.AddThreadModifier(
         kernel_id,
@@ -33,6 +36,24 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
             return parameters[0];
         }
     );
+
+    // BREAK can be used only when there is no prefetching
+    // TODO(KTT): Implement prefetching when using early break and remove this
+    tuner.AddConstraint(
+            kernel.kernel_id,
+            { "BREAK", "PREFETCH_FACTOR" },
+            [] (const std::vector<uint64_t>& values) {
+                return values[0] == 0 || values[1] == 0;
+            });
+
+
+    // All the warps working on one stripe of the matrix fit in a thread block.
+    tuner.AddConstraint(
+            kernel.kernel_id,
+            { "THREADS_PER_ROW", "BLOCK_SIZE" },
+            [] (const std::vector<uint64_t>& values) {
+                return 32*values[0] <= values[1];
+            });
 }
 
 
@@ -136,10 +157,13 @@ auto get_launcher(const kernel_context& ctx,
 {
     return [&] (::ktt::ComputeInterface& interface)
     {
+        const auto& conf = interface.GetCurrentConfiguration();
+        auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
+
         ::ktt::DimensionVector block_size =
             interface.GetCurrentLocalSize(ctx.definition_ids[0]);
         ::ktt::DimensionVector grid_size(
-            DIVIDE_INTO(A.num_rows, block_size.GetSizeX()));
+            threads_per_row * DIVIDE_INTO(A.num_rows, block_size.GetSizeX()));
 
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
