@@ -18,6 +18,9 @@ namespace cuda {
 
 namespace ktt {
 
+using u64_vec = std::vector<uint64_t>;
+
+
 template<typename T>
 void* cast(const T* ptr)
 {
