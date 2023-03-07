@@ -160,10 +160,13 @@ auto get_launcher(const kernel_context& ctx,
         const auto& conf = interface.GetCurrentConfiguration();
         auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
 
-        ::ktt::DimensionVector block_size =
-            interface.GetCurrentLocalSize(ctx.definition_ids[0]);
+        auto threads_in_block =
+            interface.GetCurrentLocalSize(ctx.definition_ids[0]).GetSizeX();
+
+        ::ktt::DimensionVector block_size(
+            threads_in_block/threads_per_row, threads_per_row);
         ::ktt::DimensionVector grid_size(
-            threads_per_row * DIVIDE_INTO(A.num_rows, block_size.GetSizeX()));
+            DIVIDE_INTO(A.num_rows, threads_in_block/threads_per_row));
 
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);

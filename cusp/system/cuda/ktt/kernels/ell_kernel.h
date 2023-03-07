@@ -95,56 +95,33 @@ ktt_ell_kernel_basic(const IndexType num_rows,
                      const ValueType* __restrict__ x,
                      ValueType* __restrict__ y)
 {
-
-#if THREADS_PER_ROW > 1
-    const IndexType thread_id = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    const IndexType warp_id = thread_id/32;
-    const IndexType stripe_id = warp_id/THREADS_PER_ROW;
-    const IndexType warp_lane = thread_id % 32;
-    const IndexType stripe_lane = warp_id % THREADS_PER_ROW;
-    const IndexType block_lane = threadIdx.x/(32*THREADS_PER_ROW);
-
-    const IndexType row = stripe_id*32 + warp_lane;
-    const IndexType start_offset = row + stripe_lane * pitch;
+    const IndexType row = blockDim.x*blockIdx.x + threadIdx.x;
     const IndexType stride = THREADS_PER_ROW * pitch;
 
-    const IndexType rounded_up_count =
-        (num_cols_per_row + THREADS_PER_ROW - 1)/THREADS_PER_ROW;
-    const IndexType remainder = num_cols_per_row % THREADS_PER_ROW;
+#if THREADS_PER_ROW > 1
+    __shared__ ValueType sums[BLOCK_SIZE/THREADS_PER_ROW];
 
-    const IndexType elem_count =
-        remainder == 0 || stripe_lane < remainder
-            ? rounded_up_count
-            : rounded_up_count - 1;
-
-    //if (row == 1)
-    //    printf("%d -> %d %d %d %d\n", thread_id, rounded_up_count, remainder, stripe_lane, elem_count);
-
-    const int stripes_in_block = BLOCK_SIZE/(32*THREADS_PER_ROW);
-    __shared__ ValueType sums[stripes_in_block][32];
-
-    if (stripe_lane == 0)
+    if (threadIdx.y == 0)
     {
-        sums[block_lane][warp_lane] = 0;
+        sums[threadIdx.x] = 0;
     }
+
     __syncthreads();
-#else
-    const IndexType row = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    const IndexType start_offset = row;
-    const IndexType stride = pitch;
-    const IndexType elem_count = num_cols_per_row;
 #endif
 
     if (row < num_rows)
     {
         ValueType sum = 0;
-        IndexType offset = start_offset;
+        IndexType n = threadIdx.y;
+        IndexType offset = row + n * pitch;
 
 #if PREFETCH_FACTOR > 0
-        IndexType num_iters = elem_count/PREFETCH_FACTOR;
+        IndexType bound = num_cols_per_row
+                            - (PREFETCH_FACTOR - 1)*THREADS_PER_ROW;
+        IndexType step = PREFETCH_FACTOR * THREADS_PER_ROW;
 
         #pragma unroll UNROLL
-        for(IndexType n = 0; n < num_iters; ++n)
+        for(; n < bound; n += step)
         {
             Prefetcher<IndexType, ValueType, PREFETCH_FACTOR> prefetcher;
 
@@ -154,14 +131,10 @@ ktt_ell_kernel_basic(const IndexType num_rows,
 
             offset += PREFETCH_FACTOR * stride;
         }
-
-        IndexType remaining_iters = elem_count % PREFETCH_FACTOR;
-#else
-        IndexType remaining_iters = elem_count;
 #endif
 
         #pragma unroll UNROLL
-        for (int n = 0; n < remaining_iters; ++n)
+        for (; n < num_cols_per_row; n += THREADS_PER_ROW)
         {
             const IndexType col = load(Aj + offset);
 
@@ -185,13 +158,13 @@ ktt_ell_kernel_basic(const IndexType num_rows,
         }
 
 #if THREADS_PER_ROW > 1
-        atomicAdd(&sums[block_lane][warp_lane], sum);
+        atomicAdd(&sums[threadIdx.x], sum);
 
         __syncthreads();
 
-        if (stripe_lane == 0)
+        if (threadIdx.y == 0)
         {
-            y[row] = sums[block_lane][warp_lane];
+            y[row] = sums[threadIdx.x];
         }
 #else
         y[row] = sum;
