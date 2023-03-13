@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cusp/detail/config.h>
 
 #include <cusp/ell_matrix.h>
