@@ -6,7 +6,11 @@
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/device_ptr.h> // raw_pointer_cast
 
-namespace cusp {
+namespace cusp
+{
+
+namespace ktt
+{
 
 
 template<typename IndexType>
@@ -32,7 +36,7 @@ struct ell_row_length
 
 template<typename IndexType, typename ValueType, typename MemorySpace>
 void
-compute_row_lengths(cusp::ellr_matrix<IndexType, ValueType, MemorySpace>& A)
+compute_row_lengths(cusp::ktt::ellr_matrix<IndexType, ValueType, MemorySpace>& A)
 {
     thrust::counting_iterator<IndexType> row_idx_it(0);
 
@@ -127,5 +131,7 @@ void ellr_matrix<IndexType, ValueType, MemorySpace>::update_row_lengths()
     compute_row_lengths(*this);
 }
 
+
+} // namespace ktt
 
 } // namespace cusp

@@ -4,7 +4,11 @@
 
 #include <type_traits>
 
+
 namespace cusp
+{
+
+namespace ktt
 {
 
 
@@ -84,6 +88,8 @@ public:
 };
 
 
+} // namespace ktt
+
 } // namespace cusp
 
-#include <cusp/detail/ellr_matrix.inl>
+#include <cusp/ktt/detail/ellr_matrix.inl>
