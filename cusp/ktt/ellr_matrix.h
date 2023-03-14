@@ -22,7 +22,7 @@ class ellr_matrix : public cusp::ell_matrix<IndexType, ValueType, MemorySpace>
 
 public:
 
-    using row_lengths_array_type = cusp::array1d<size_t, MemorySpace>;
+    using row_lengths_array_type = cusp::array1d<IndexType, MemorySpace>;
 
     row_lengths_array_type row_lengths;
 

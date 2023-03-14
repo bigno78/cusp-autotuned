@@ -15,6 +15,7 @@
 #include <cusp/multiply.h>
 
 #include <cusp/ktt/ktt.h>
+#include <cusp/ktt/ellr_matrix.h>
 #include <cusp/ktt/matrix_generation.h>
 
 #include <iostream>
@@ -29,9 +30,17 @@
     }                                                                    \
     DECLARE_UNITTEST(VTEST##Ktt##Fmt##Matrix);
 
+#define DECLARE_KTT_ELLR_UNITTEST(VTEST)                                    \
+    void VTEST##Ktt##Ellr##Matrix(void)                                     \
+    {                                                                       \
+        VTEST< cusp::ktt::ellr_matrix<int, float, cusp::device_memory> >(); \
+    }                                                                       \
+    DECLARE_UNITTEST(VTEST##Ktt##Ellr##Matrix);
+
 #define DECLARE_KTT_UNITTEST(VTEST)                     \
     DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST, Dia, dia) \
-    DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST, Ell, ell)
+    DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST, Ell, ell) \
+    DECLARE_KTT_ELLR_UNITTEST(VTEST)
 
 
 struct UnitTestStopCondition : ::ktt::StopCondition

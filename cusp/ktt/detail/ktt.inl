@@ -116,18 +116,18 @@ tune(const Matrix<IndexType, ValueType1, cusp::device_memory>& A,
 }
 
 
-template<typename IndexType,
-         typename ValueType1,
-         typename ValueType2,
-         typename ValueType3,
-         typename Format>
-void reset_tuning()
-{
-    using namespace cusp::system::cuda::ktt;
+// template<typename IndexType,
+//          typename ValueType1,
+//          typename ValueType2,
+//          typename ValueType3,
+//          typename Format>
+// void reset_tuning()
+// {
+//     using namespace cusp::system::cuda::ktt;
 
-    kernel_context kernel = get_kernel<IndexType, ValueType1, ValueType2, ValueType3>(get_tuner(), Format{});
-    detail::tuner->ClearData(kernel.kernel_id);
-}
+//     kernel_context kernel = get_kernel<IndexType, ValueType1, ValueType2, ValueType3>(get_tuner(), Format{});
+//     detail::tuner->ClearData(kernel.kernel_id);
+// }
 
 
 template <typename MatrixType,
@@ -141,7 +141,7 @@ void reset_tuning(const MatrixType& A,
     using ValueType = typename MatrixType::value_type;
     using Format = typename MatrixType::format;
 
-    return reset_tuning<IndexType, ValueType, ValueType2, ValueType2, Format>();
+    return reset_tuning<IndexType, ValueType, ValueType2, ValueType2>(A);
 }
 
 

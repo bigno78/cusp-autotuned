@@ -88,36 +88,37 @@ template <typename IndexType,
 __device__ void
 ktt_ell_kernel_basic(const IndexType num_rows,
                      const IndexType num_cols,
-                     const IndexType num_cols_per_row,
+                     const IndexType max_cols_per_row,
                      const IndexType pitch,
                      const IndexType* __restrict__ Aj,
                      const ValueType* __restrict__ Ax,
                      const ValueType* __restrict__ x,
-                     ValueType* __restrict__ y)
+                     ValueType* __restrict__ y,
+                     const IndexType* __restrict__ row_lengths)
 {
     const IndexType row = blockDim.x*blockIdx.x + threadIdx.x;
     const IndexType stride = THREADS_PER_ROW * pitch;
 
 #if THREADS_PER_ROW > 1
-    __shared__ ValueType sums[BLOCK_SIZE/THREADS_PER_ROW];
+    __shared__ ValueType sums[BLOCK_SIZE / THREADS_PER_ROW];
 
     if (threadIdx.y == 0)
-    {
         sums[threadIdx.x] = 0;
-    }
 
     __syncthreads();
 #endif
 
     if (row < num_rows)
     {
+        const IndexType num_cols = row_lengths == NULL
+                                    ? max_cols_per_row
+                                    : row_lengths[row];
         ValueType sum = 0;
         IndexType n = threadIdx.y;
-        IndexType offset = row + n * pitch;
+        IndexType offset = row + n*pitch;
 
 #if PREFETCH_FACTOR > 0
-        IndexType bound = num_cols_per_row
-                            - (PREFETCH_FACTOR - 1)*THREADS_PER_ROW;
+        IndexType bound = num_cols - (PREFETCH_FACTOR - 1)*THREADS_PER_ROW;
         IndexType step = PREFETCH_FACTOR * THREADS_PER_ROW;
 
         #pragma unroll UNROLL
@@ -134,7 +135,7 @@ ktt_ell_kernel_basic(const IndexType num_rows,
 #endif
 
         #pragma unroll UNROLL
-        for (; n < num_cols_per_row; n += THREADS_PER_ROW)
+        for (; n < num_cols; n += THREADS_PER_ROW)
         {
             const IndexType col = load(Aj + offset);
 
@@ -186,5 +187,23 @@ ktt_ell_kernel(const IndexType num_rows,
                ValueType* __restrict__ y)
 {
     ktt_ell_kernel_basic(num_rows, num_cols, num_cols_per_row, pitch,
-                         Aj, Ax, x, y);
+                         Aj, Ax, x, y, (const IndexType*)NULL);
+}
+
+
+template <typename IndexType,
+          typename ValueType>
+__launch_bounds__(BLOCK_SIZE, 1) __global__ void
+ktt_ellr_kernel(const IndexType num_rows,
+                const IndexType num_cols,
+                const IndexType num_cols_per_row,
+                const IndexType pitch,
+                const IndexType* __restrict__ Aj,
+                const ValueType* __restrict__ Ax,
+                const ValueType* __restrict__ x,
+                ValueType* __restrict__ y,
+                const IndexType* __restrict__ row_lengths)
+{
+    ktt_ell_kernel_basic(num_rows, num_cols, num_cols_per_row, pitch,
+                         Aj, Ax, x, y, row_lengths);
 }

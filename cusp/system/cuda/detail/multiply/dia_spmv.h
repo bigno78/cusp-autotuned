@@ -26,6 +26,13 @@
 
 #include <algorithm>
 
+#ifdef TIME_DIA
+#include <chrono>
+#include <iostream>
+
+namespace krn = std::chrono;
+#endif
+
 namespace cusp
 {
 namespace system
@@ -165,8 +172,19 @@ void multiply(cuda::execution_policy<DerivedPolicy>& exec,
 
     cudaStream_t s = stream(thrust::detail::derived_cast(exec));
 
+#ifdef TIME_DIA
+    auto start = krn::steady_clock::now();
+#endif
+
     spmv_dia_kernel<OffsetsIterator, ValueIterator1, ValueIterator2, ValueIterator3, UnaryFunction, BinaryFunction1, BinaryFunction2, BLOCK_SIZE> <<<NUM_BLOCKS, BLOCK_SIZE, 0, s>>>
     (A.num_rows, A.num_cols, num_diagonals, pitch, A.diagonal_offsets.begin(), A.values.values.begin(), x.begin(), y.begin(), initialize, combine, reduce);
+
+#ifdef TIME_DIA
+    cudaStreamSynchronize(s);
+    auto end = krn::steady_clock::now();
+    size_t time = krn::duration_cast<krn::microseconds>(end - start).count();
+    std::cout << "cusp dia kernel: " << time << " us\n";
+#endif
 }
 
 } // end namespace detail

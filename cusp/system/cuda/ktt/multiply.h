@@ -33,7 +33,7 @@ kernel_context get_kernel(::ktt::Tuner& tuner,
     using ValueType = typename MatrixType::value_type;
     using FormatType = typename MatrixType::format;
 
-    return get_kernel<IndexType, ValueType, ValueType1, ValueType2>(tuner, FormatType{});
+    return get_kernel<IndexType, ValueType, ValueType1, ValueType2>(tuner, A);
 }
 
 

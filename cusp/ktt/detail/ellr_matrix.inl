@@ -20,11 +20,11 @@ struct ell_row_length
     size_t num_cols_per_row;
     size_t pitch;
 
-    __host__ __device__ size_t operator()(IndexType row_idx)
+    __host__ __device__ IndexType operator()(IndexType row_idx)
     {
-        size_t len = 0;
+        IndexType len = 0;
 
-        while (len < num_cols_per_row && row_idx + len*pitch < 8
+        while (len < num_cols_per_row
                 && column_indices[row_idx + len*pitch] >= 0)
         {
             len++;
