@@ -67,6 +67,16 @@ inline void setup_ell_tuning_parameters(const kernel_context& kernel)
             });
 }
 
+inline void setup_ellr_tuning_parameters(const kernel_context& kernel)
+{
+    auto& tuner = *kernel.tuner;
+    auto kernel_id = kernel.kernel_id;
+
+    setup_common_tuning_parameters(kernel);
+
+    tuner.AddParameter(kernel_id, "ELLR", u64_vec{ 1 });
+}
+
 
 template<typename IndexType,
          typename ValueType1,
@@ -143,7 +153,7 @@ const kernel_context& get_kernel(
     static kernel_context kernel =
         ell::initialize_kernel<IndexType, ValueType1, ValueType2, ValueType3>(
             tuner, "ktt_ellr_kernel", "EllrKernel",
-            ell::setup_common_tuning_parameters);
+            ell::setup_ellr_tuning_parameters);
 
     return kernel;
 }
