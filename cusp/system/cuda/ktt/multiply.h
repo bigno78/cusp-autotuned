@@ -31,9 +31,19 @@ kernel_context get_kernel(::ktt::Tuner& tuner,
 {
     using IndexType = typename MatrixType::index_type;
     using ValueType = typename MatrixType::value_type;
-    using FormatType = typename MatrixType::format;
 
-    return get_kernel<IndexType, ValueType, ValueType1, ValueType2>(tuner, A);
+    if constexpr (std::is_same_v<cusp::host_memory,
+                                 typename MatrixType::memory_space>)
+    {
+        using DeviceMatrix =
+            typename MatrixType::rebind<cusp::device_memory>::type;
+        return get_kernel<IndexType, ValueType, ValueType1, ValueType2>(
+                    tuner, DeviceMatrix{});
+    }
+    else
+    {
+        return get_kernel<IndexType, ValueType, ValueType1, ValueType2>(tuner, A);
+    }
 }
 
 

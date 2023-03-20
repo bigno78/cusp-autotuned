@@ -127,11 +127,10 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner,
 template<typename IndexType,
          typename ValueType1,
          typename ValueType2,
-         typename ValueType3,
-         typename MemorySpace>
+         typename ValueType3>
 const kernel_context& get_kernel(
-            ::ktt::Tuner& tuner,
-            const cusp::ell_matrix<IndexType, ValueType1, MemorySpace>& A)
+        ::ktt::Tuner& tuner,
+        const cusp::ell_matrix<IndexType, ValueType1, cusp::device_memory>& A)
 {
     static kernel_context kernel =
         ell::initialize_kernel<IndexType, ValueType1, ValueType2, ValueType3>(
@@ -144,11 +143,10 @@ const kernel_context& get_kernel(
 template<typename IndexType,
          typename ValueType1,
          typename ValueType2,
-         typename ValueType3,
-         typename MemorySpace>
+         typename ValueType3>
 const kernel_context& get_kernel(
-        ::ktt::Tuner& tuner,
-        const cusp::ktt::ellr_matrix<IndexType, ValueType1, MemorySpace>& A)
+    ::ktt::Tuner& tuner,
+    const cusp::ktt::ellr_matrix<IndexType, ValueType1, cusp::device_memory>& A)
 {
     static kernel_context kernel =
         ell::initialize_kernel<IndexType, ValueType1, ValueType2, ValueType3>(
