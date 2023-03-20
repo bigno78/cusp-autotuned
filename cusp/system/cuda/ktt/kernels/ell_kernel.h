@@ -49,11 +49,15 @@ struct Prefetcher : Prefetcher<IndexType, ValueType,  K - 1>
                        IndexType pitch,
                        IndexType i)
     {
+#ifndef ELLR
         if (col >= 0)
         {
+#endif
             A_val = load(Ax + offset + i*pitch);
             x_val = x[col];
+#ifndef ELLR
         }
+#endif
         parent::prefetch_vals(Ax, x, offset, pitch, i + 1);
     }
 
@@ -110,7 +114,7 @@ ktt_ell_kernel_basic(const IndexType num_rows,
 
     if (row < num_rows)
     {
-        const IndexType num_cols = row_lengths == NULL
+        const IndexType num_elems = row_lengths == NULL
                                     ? max_cols_per_row
                                     : row_lengths[row];
         ValueType sum = 0;
@@ -118,7 +122,7 @@ ktt_ell_kernel_basic(const IndexType num_rows,
         IndexType offset = row + n*pitch;
 
 #if PREFETCH_FACTOR > 0
-        IndexType bound = num_cols - (PREFETCH_FACTOR - 1)*THREADS_PER_ROW;
+        IndexType bound = num_elems - (PREFETCH_FACTOR - 1)*THREADS_PER_ROW;
         IndexType step = PREFETCH_FACTOR * THREADS_PER_ROW;
 
         #pragma unroll UNROLL
@@ -135,18 +139,21 @@ ktt_ell_kernel_basic(const IndexType num_rows,
 #endif
 
         #pragma unroll UNROLL
-        for (; n < num_cols; n += THREADS_PER_ROW)
+        for (; n < num_elems; n += THREADS_PER_ROW)
         {
             const IndexType col = load(Aj + offset);
 
             // This assumes that
             // cusp::ell_matrix<...>::invalid_index is always < 0
+#ifndef ELLR
             if (col >= 0)
             {
+#endif
                 const ValueType x_j = x[col];
                 const ValueType A_ij = load(Ax + offset);
 
                 sum += A_ij * x_j;
+#ifndef ELLR
             }
             else
             {
@@ -154,6 +161,7 @@ ktt_ell_kernel_basic(const IndexType num_rows,
                 break;
 #endif
             }
+#endif
 
             offset += stride;
         }
