@@ -22,7 +22,7 @@ inline void setup_common_tuning_parameters(const kernel_context& kernel)
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
 
-    tuner.AddParameter(kernel_id, "BLOCK_SIZE",      u64_vec{ 128 });
+    tuner.AddParameter(kernel_id, "BLOCK_SIZE",      u64_vec{ 128, 256, 512 });
     tuner.AddParameter(kernel_id, "UNCACHED_LOADS",  u64_vec{ 0, 1 });
     tuner.AddParameter(kernel_id, "DISABLE_UNROLL",  u64_vec{ 0, 1 });
     tuner.AddParameter(kernel_id, "PREFETCH_FACTOR", u64_vec{ 0, 2, 4 });
