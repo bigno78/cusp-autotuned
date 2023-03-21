@@ -100,10 +100,7 @@ struct UnrolledLoop<IndexType, ValueType1, ValueType2, 0>
                              IndexType i) {}
 
     template<typename ValueType3>
-    __device__ ValueType3 do_iter()
-    {
-        return 0;
-    }
+    __device__ ValueType3 do_iter() { return 0; }
 };
 
 
@@ -208,48 +205,32 @@ blocked_offsets_dia_kernel(const int num_rows,
 
         if (thread_id < num_rows)
         {
-#if SHARED_PREFETCH_FACTOR == 0 && REGISTER_PREFETCH_FACTOR == 0
-            for (IndexType i = 0; i < batch_size; ++i)
-            {
-                IndexType col = offsets[i] + thread_id;
-                if (col >= 0 && col < num_cols)
-                {
-                    auto diag_val = load_diag_val(&values[ (offset_base + i)*pitch + thread_id ]);
-                    auto x_val = load_x_val(&x[col]);
+            IndexType i = 0;
 
-                    sum += diag_val*x_val;
-                }
-            }
-#else // SHARED_PREFETCH_FACTOR == 0 && REGISTER_PREFETCH_FACTOR == 0
-            int end = batch_size - (batch_size % PREFETCH_FACTOR);
-
-            for (IndexType i = 0; i < end; i += PREFETCH_FACTOR)
+#if PREFETCH_FACTOR > 0
+            for (; i < batch_size - PREFETCH_FACTOR + 1; i += PREFETCH_FACTOR)
             {
 #if REGISTER_PREFETCH_FACTOR > 0
-#if REGISTER_PREFETCH_TYPE == 0
 
+#if REGISTER_PREFETCH_TYPE == 0
                 UnrolledLoop<IndexType, ValueType1, ValueType2, REGISTER_PREFETCH_FACTOR> loop;
                 loop.prefetch(offsets, values, x, pitch, num_cols, thread_id, offset_base, i);
                 sum += loop.template do_iter<ValueType3>();
-
 #elif REGISTER_PREFETCH_TYPE == 1
-
                 PREFETCH_LOAD_VALS(PREFETCH_FACTOR);
                 PREFETCH_ACCUMULATE(PREFETCH_FACTOR);
-
 #endif // REGISTER_PREFETCH_TYPE == 1
-#elif SHARED_PREFETCH_FACTOR > 0
 
+#elif SHARED_PREFETCH_FACTOR > 0
                 for (int j = 0; j < SHARED_PREFETCH_FACTOR; ++j)
                 {
                     IndexType col = offsets[i + j] + thread_id;
                     if (col >= 0 && col < num_cols)
                     {
-                        auto diag_val = load_diag_val(&values[ (offset_base + i + j)*pitch + thread_id ]);
-                        auto x_val = load_x_val(&x[col]);
-
-                        values_prefetched[j*BLOCK_SIZE + threadIdx.x] = diag_val;
-                        x_prefetched[j*BLOCK_SIZE + threadIdx.x] = x_val;
+                        values_prefetched[j*BLOCK_SIZE + threadIdx.x] =
+                            load_diag_val(&values[ (offset_base + i + j)*pitch + thread_id ]);;
+                        x_prefetched[j*BLOCK_SIZE + threadIdx.x] =
+                            load_x_val(&x[col]);
                     }
                     else
                     {
@@ -264,8 +245,9 @@ blocked_offsets_dia_kernel(const int num_rows,
                 }
 #endif // SHARED_PREFETCH_FACTOR > 0
             }
+#endif // PREFETCH_FACTOR > 0
 
-            for (IndexType i = end; i < batch_size; ++i)
+            for (; i < batch_size; ++i)
             {
                 IndexType col = offsets[i] + thread_id;
                 if (col >= 0 && col < num_cols)
@@ -276,7 +258,6 @@ blocked_offsets_dia_kernel(const int num_rows,
                     sum += diag_val*x_val;
                 }
             }
-#endif // SHARED_PREFETCH_FACTOR == 0 && REGISTER_PREFETCH_FACTOR == 0
         }
 
         __syncthreads();
