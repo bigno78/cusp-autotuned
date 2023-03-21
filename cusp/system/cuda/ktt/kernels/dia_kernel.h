@@ -9,10 +9,6 @@
     #define PREFETCH_FACTOR 0
 #endif
 
-#ifndef BLOCK_SIZE
-    #define BLOCK_SIZE 256
-#endif
-
 
 template<typename T>
 __device__ T min(T a, T b) {
@@ -145,15 +141,35 @@ naive_dia_kernel(const int num_rows,
     }
 }
 
-#define REGISTER_PREFETCH_ITERATION(iter) \
-    IndexType col##iter       = offsets[i + iter] + thread_id; \
-    ValueType1 diag_val##iter = 0; \
-    ValueType2 x_val##iter    = 0; \
-    if (col##iter >= 0 && col##iter < num_cols) \
-    { \
-        diag_val##iter = load_diag_val(&values[ (offset_base + i + iter)*pitch + thread_id ]); \
-        x_val##iter    = load_x_val(&x[col##iter]); \
+
+#define PREFETCH_LOAD_ITERATION(iter)                                          \
+    IndexType col##iter       = offsets[i + iter - 1] + thread_id;             \
+    ValueType1 diag_val##iter = 0;                                             \
+    ValueType2 x_val##iter    = 0;                                             \
+    if (col##iter >= 0 && col##iter < num_cols)                                \
+    {                                                                          \
+        IndexType idx = (offset_base + i + iter - 1)*pitch + thread_id;        \
+        diag_val##iter = load_diag_val(&values[idx]);                          \
+        x_val##iter    = load_x_val(&x[col##iter]);                            \
     }
+
+#define PREFETCH_ACCUM_ITERATION(iter) \
+    sum += diag_val##iter * x_val##iter;
+
+#define PREFETCH1(ITER) ITER(1);
+#define PREFETCH2(ITER) ITER(2); PREFETCH1(ITER)
+#define PREFETCH3(ITER) ITER(3); PREFETCH2(ITER)
+#define PREFETCH4(ITER) ITER(4); PREFETCH3(ITER)
+#define PREFETCH5(ITER) ITER(5); PREFETCH4(ITER)
+#define PREFETCH6(ITER) ITER(6); PREFETCH5(ITER)
+#define PREFETCH7(ITER) ITER(7); PREFETCH6(ITER)
+#define PREFETCH8(ITER) ITER(8); PREFETCH7(ITER)
+
+#define PREFETCH_IMPL(factor, ITER) PREFETCH##factor(ITER)
+
+#define PREFETCH_LOAD_VALS(factor) PREFETCH_IMPL(factor, PREFETCH_LOAD_ITERATION)
+#define PREFETCH_ACCUMULATE(factor) PREFETCH_IMPL(factor, PREFETCH_ACCUM_ITERATION)
+
 
 template <typename IndexType,
           typename ValueType1,
@@ -182,13 +198,13 @@ blocked_offsets_dia_kernel(const int num_rows,
     for (int offset_base = 0; offset_base < num_diagonals; offset_base += BLOCK_SIZE)
     {
         if (offset_base + threadIdx.x < num_diagonals)
-        {
             offsets[threadIdx.x] = diagonal_offsets[offset_base + threadIdx.x];
-        }
 
         __syncthreads();
 
-        int batch_size = BLOCK_SIZE > num_diagonals - offset_base ? num_diagonals - offset_base : BLOCK_SIZE;
+        int batch_size = BLOCK_SIZE > num_diagonals - offset_base
+                            ? num_diagonals - offset_base
+                            : BLOCK_SIZE;
 
         if (thread_id < num_rows)
         {
@@ -218,23 +234,8 @@ blocked_offsets_dia_kernel(const int num_rows,
 
 #elif REGISTER_PREFETCH_TYPE == 1
 
-                REGISTER_PREFETCH_ITERATION(0);
-                REGISTER_PREFETCH_ITERATION(1);
-#if REGISTER_PREFETCH_FACTOR > 2
-                REGISTER_PREFETCH_ITERATION(2);
-#endif
-#if REGISTER_PREFETCH_FACTOR > 3
-                REGISTER_PREFETCH_ITERATION(3);
-#endif
-
-                sum += diag_val0 * x_val0;
-                sum += diag_val1 * x_val1;
-#if REGISTER_PREFETCH_FACTOR > 2
-                sum += diag_val2 * x_val2;
-#endif
-#if REGISTER_PREFETCH_FACTOR > 3
-                sum += diag_val3 * x_val3;
-#endif
+                PREFETCH_LOAD_VALS(PREFETCH_FACTOR);
+                PREFETCH_ACCUMULATE(PREFETCH_FACTOR);
 
 #endif // REGISTER_PREFETCH_TYPE == 1
 #elif SHARED_PREFETCH_FACTOR > 0
@@ -282,9 +283,7 @@ blocked_offsets_dia_kernel(const int num_rows,
     }
 
     if (thread_id < num_rows)
-    {
         y[thread_id] = sum;
-    }
 }
 
 template <typename IndexType,
