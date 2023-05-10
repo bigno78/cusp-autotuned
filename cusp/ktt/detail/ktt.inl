@@ -137,11 +137,9 @@ void reset_tuning(const MatrixType& A,
                   const cusp::array1d<ValueType1, cusp::device_memory>& x,
                   cusp::array1d<ValueType2, cusp::device_memory>& y)
 {
-    using IndexType = typename MatrixType::index_type;
-    using ValueType = typename MatrixType::value_type;
-    using Format = typename MatrixType::format;
-
-    return reset_tuning<IndexType, ValueType, ValueType2, ValueType2>(A);
+    auto& tuner = get_tuner();
+    const auto& kernel = cusp::system::cuda::ktt::get_kernel(tuner, A, x, y);
+    tuner.ClearData(kernel.kernel_id);
 }
 
 
