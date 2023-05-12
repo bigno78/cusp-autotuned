@@ -249,8 +249,10 @@ auto get_launcher(const kernel_context& ctx,
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
         } else {
+#ifdef PROFILE
             interface.RunKernelWithProfiling(ctx.definition_ids[0],
                                              grid_size, block_size);
+#endif
         }
     };
 }
