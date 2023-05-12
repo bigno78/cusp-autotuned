@@ -26,28 +26,12 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
 
-    tuner.AddParameter(kernel_id, "KERNEL_TYPE", u64_vec{ 1, 2 });
-    // tuner.AddParameter(kernel_id, "SHARED_PREFETCH_FACTOR",
-    //                    u64_vec{ 0, 2, 4, 8 });
+    tuner.AddParameter(kernel_id, "BLOCK_SIZE", u64_vec{ 128, 256, 512 });
     tuner.AddParameter(kernel_id, "REGISTER_PREFETCH_FACTOR",
                        u64_vec{ 0, 2, 3, 4 });
     tuner.AddParameter(kernel_id, "REGISTER_PREFETCH_TYPE", u64_vec{ 0, 1 });
     tuner.AddParameter(kernel_id, "LOAD_TYPE", u64_vec{ 0, 1 });
-    tuner.AddParameter(kernel_id, "STRIPING_FACTOR", u64_vec{ 2, 4, 8, 16 });
-    tuner.AddParameter(kernel_id, "BLOCK_SIZE", u64_vec{ 128, 256, 512 });
 
-    // START OF HACKS to test striping ----
-    // tuner.AddParameter(kernel_id, "BLOCKS_PER_SECTOR", u64_vec{ 0 });
-    // tuner.AddParameter(kernel_id, "CHUNK_SIZE", u64_vec{ 0 });
-    // tuner.AddParameter(kernel_id, "STRIPE_SIZE", u64_vec{ 0 });
-    // tuner.AddParameter(kernel_id, "GRID_SIZE", u64_vec{ 0 });
-    // tuner.AddParameter(kernel_id, "SECTOR_MAPPING_TYPE", u64_vec{ 0, 1 });
-
-    // tuner.AddConstraint(kernel.kernel_id, { "SECTOR_MAPPING_TYPE" },
-    //                     [] (const std::vector<uint64_t>& values) {
-    //                         return values[0] == 0;
-    //                     });
-    // END OF HACKS -----------------------
 
     tuner.AddThreadModifier(
         kernel.kernel_id,

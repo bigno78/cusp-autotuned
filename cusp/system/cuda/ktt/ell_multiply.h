@@ -26,7 +26,7 @@ inline void setup_common_tuning_parameters(const kernel_context& kernel)
     tuner.AddParameter(kernel_id, "UNCACHED_LOADS",  u64_vec{ 0, 1 });
     tuner.AddParameter(kernel_id, "DISABLE_UNROLL",  u64_vec{ 0, 1 });
     tuner.AddParameter(kernel_id, "PREFETCH_FACTOR", u64_vec{ 0, 2, 4 });
-    tuner.AddParameter(kernel_id, "THREADS_PER_ROW", u64_vec{ 1, 2, 4 });
+    tuner.AddParameter(kernel_id, "THREADS_PER_ROW", u64_vec{ 1, 2, 4, 8 });
 
     tuner.AddThreadModifier(
         kernel_id,

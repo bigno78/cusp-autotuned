@@ -444,17 +444,6 @@ ktt_dia_vector_kernel(const int num_rows,
                       const ValueType2* x,
                       ValueType3* y)
 {
-#if KERNEL_TYPE == 0
-    naive_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
-        (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
-#elif KERNEL_TYPE == 1
     blocked_offsets_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
         (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
-#elif KERNEL_TYPE == 2
-    striped_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
-        (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
-#elif KERNEL_TYPE == 3
-    double_striped_dia_kernel<IndexType, ValueType1, ValueType2, ValueType3>
-        (num_rows, num_cols, num_diagonals, pitch, diagonal_offsets, values, x, y);
-#endif
 }
