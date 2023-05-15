@@ -30,7 +30,7 @@ public:
      */
     ellr_matrix(void) {}
 
-    /*! Construct an \p ell_matrix with a specific shape, number of nonzero entries,
+    /*! Construct an \p ellr_matrix with a specific shape, number of nonzero entries,
      *  and maximum number of nonzero entries per row.
      *
      *  \param num_rows Number of rows.
@@ -43,7 +43,7 @@ public:
                 const size_t num_entries, const size_t num_entries_per_row,
                 const size_t alignment = 32);
 
-    /*! Construct an \p ell_matrix from another matrix.
+    /*! Construct an \p ellr_matrix from another matrix.
      *
      *  \param matrix Another sparse or dense matrix.
      */
@@ -71,9 +71,9 @@ public:
     void resize(const size_t num_rows, const size_t num_cols, const size_t num_entries,
                 const size_t num_entries_per_row, const size_t alignment);
 
-    /*! Swap the contents of two \p ell_matrix objects.
+    /*! Swap the contents of two \p ellr_matrix objects.
      *
-     *  \param matrix Another \p ell_matrix with the same IndexType and ValueType.
+     *  \param matrix Another \p ellr_matrix with the same IndexType and ValueType.
      */
     void swap(ellr_matrix& matrix);
 
