@@ -15,6 +15,7 @@
 #include <cusp/multiply.h>
 
 #include <cusp/ktt/ktt.h>
+#include <cusp/ktt/ellr_matrix.h>
 #include <cusp/ktt/matrix_generation.h>
 
 #include <iostream>
@@ -29,8 +30,17 @@
     }                                                                    \
     DECLARE_UNITTEST(VTEST##Ktt##Fmt##Matrix);
 
-#define DECLARE_KTT_UNITTEST(VTEST) \
-    DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST,Dia,dia)
+#define DECLARE_KTT_ELLR_UNITTEST(VTEST)                                    \
+    void VTEST##Ktt##Ellr##Matrix(void)                                     \
+    {                                                                       \
+        VTEST< cusp::ktt::ellr_matrix<int, float, cusp::device_memory> >(); \
+    }                                                                       \
+    DECLARE_UNITTEST(VTEST##Ktt##Ellr##Matrix);
+
+#define DECLARE_KTT_UNITTEST(VTEST)                     \
+    DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST, Dia, dia) \
+    DECLARE_KTT_SPARSE_FORMAT_UNITTEST(VTEST, Ell, ell) \
+    DECLARE_KTT_ELLR_UNITTEST(VTEST)
 
 
 struct UnitTestStopCondition : ::ktt::StopCondition
@@ -71,11 +81,12 @@ private:
 };
 
 
-void assert_tunning_results_valid(const std::vector<::ktt::KernelResult>& results,
-                         const std::string& ktt_logs,
-                         const std::string& arg_name,
-                         const std::string& filename = "unknown",
-                         int lineno = -1)
+void assert_tunning_results_valid(
+    const std::vector<::ktt::KernelResult>& results,
+    const std::string& ktt_logs,
+    const std::string& arg_name,
+    const std::string& filename = "unknown",
+    int lineno = -1)
 {
     bool failed = false;
     unittest::UnitTestFailure f;
@@ -106,8 +117,10 @@ void assert_tunning_results_valid(const std::vector<::ktt::KernelResult>& result
 
         failed = true;
 
-        f << "[" << filename << ":" << lineno << "] " << result.GetKernelName() << ": ";
-        f << "Encountered an error: " << reason << "\n\n";
+        f << "[" << filename << ":" << lineno << "] ";
+        f << result.GetKernelName() << ": ";
+        f << reason << "\n\n";
+
         f << "On matrix: " << arg_name << "\n\n";
 
         f << "In configuration:\n";

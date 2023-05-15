@@ -27,10 +27,13 @@
 #include <cusp/system/detail/generic/multiply/spgemm.h>
 #include <cusp/system/detail/generic/multiply/spmv.h>
 
+#include <thrust/functional.h>
+
 #include <cusp/ktt/ktt.h>
 #include <cusp/system/cuda/ktt/multiply.h>
 
-#include <thrust/functional.h>
+#include <type_traits>
+
 
 namespace cusp
 {
@@ -107,43 +110,58 @@ multiply(thrust::execution_policy<DerivedPolicy> &exec,
     cusp::multiply(exec, A, B, C, initialize, combine, reduce);
 }
 
+
+// The has_rebind type traits is used to check whether matrix is a view
 template <typename T, typename /*U*/ = void>
 struct has_rebind : std::false_type {};
- 
+
 template <typename T>
 struct has_rebind<T, std::void_t<typename T::rebind<int>>> : std::true_type {};
 
 template<typename T>
 constexpr bool has_rebind_v = has_rebind<T>::value;
 
+
 template <typename DerivedPolicy,
-         typename LinearOperator,
+         typename Matrix,
          typename ValueType1,
          typename ValueType2>
-typename thrust::detail::disable_if_convertible<typename LinearOperator::format,cusp::unknown_format>::type
+typename thrust::detail::disable_if_convertible<
+    typename Matrix::format,
+    cusp::unknown_format
+>::type
 multiply(cusp::system::cuda::detail::execution_policy<DerivedPolicy> &exec,
-         const LinearOperator&  A,
-         const cusp::array1d<ValueType1, cusp::device_memory>& B,
-         cusp::array1d<ValueType2, cusp::device_memory>& C)
+         const Matrix& A,
+         const cusp::array1d<ValueType1, cusp::device_memory>& x,
+         cusp::array1d<ValueType2, cusp::device_memory>& y)
 {
-    typedef typename LinearOperator::format  MatrixFormat;
+    using IndexType = typename Matrix::index_type;
+    using ValueType = typename Matrix::value_type;
 
-    if constexpr ((/*cusp::detail::is_csr<LinearOperator>::value ||*/ cusp::detail::is_dia<LinearOperator>::value) && has_rebind_v<LinearOperator>) {
-        if (cusp::ktt::detail::is_enabled) {
-            cusp::ktt::detail::lazy_init();
-            cusp::system::cuda::ktt::multiply(*cusp::ktt::detail::tuner, A, B, C);
-            return;    
+    if constexpr ((cusp::detail::is_ell<Matrix>::value
+                    || cusp::detail::is_dia<Matrix>::value
+                    && std::is_fundamental_v<IndexType>
+                    && std::is_fundamental_v<ValueType>
+                    && std::is_fundamental_v<ValueType1>
+                    && std::is_fundamental_v<ValueType2>)
+                    && has_rebind_v<Matrix>)
+    {
+        if (cusp::ktt::detail::is_enabled)
+        {
+            cusp::system::cuda::ktt::multiply(cusp::ktt::get_tuner(), A, x, y);
+            return;
         }
     }
 
-    typedef typename LinearOperator::value_type ValueType;
+    // The call is not meant for KTT. Pass it on...
 
     cusp::constant_functor<ValueType> initialize(0);
     thrust::multiplies<ValueType> combine;
     thrust::plus<ValueType> reduce;
 
-    cusp::multiply(exec, A, B, C, initialize, combine, reduce);
+    cusp::multiply(exec, A, x, y, initialize, combine, reduce);
 }
+
 
 template <typename DerivedPolicy,
          typename LinearOperator,

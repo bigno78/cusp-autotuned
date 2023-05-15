@@ -28,6 +28,13 @@
 #include <cassert>
 #include <algorithm>
 
+#ifdef TIME_ELL
+#include <chrono>
+#include <iostream>
+
+namespace krn = std::chrono;
+#endif
+
 namespace cusp
 {
 namespace system
@@ -132,8 +139,19 @@ void multiply(cuda::execution_policy<DerivedPolicy>& exec,
 
     cudaStream_t s = stream(thrust::detail::derived_cast(exec));
 
+#ifdef TIME_ELL
+    auto start = krn::steady_clock::now();
+#endif
+
     spmv_ell_kernel<IndexType,ValueType,UnaryFunction,BinaryFunction1,BinaryFunction2,BLOCK_SIZE> <<<NUM_BLOCKS, BLOCK_SIZE, 0, s>>>
     (A.num_rows, A.num_cols, num_entries_per_row, pitch, J, V, x_ptr, y_ptr, initialize, combine, reduce);
+
+#ifdef TIME_ELL
+    cudaStreamSynchronize(s);
+    auto end = krn::steady_clock::now();
+    size_t time = krn::duration_cast<krn::microseconds>(end - start).count();
+    std::cout << "cusp ell kernel: " << time << " us\n";
+#endif
 }
 
 } // end namespace detail

@@ -1,17 +1,11 @@
+#pragma once
 
-inline __device__ int fib(int n) {
-    if (n < 2) {
-        return n;
-    }
-    return fib(n-1) + fib(n-2);
-}
+#define VECTORS_PER_BLOCK (BLOCK_SIZE/THREADS_PER_VECTOR)
 
 template <typename IndexType,
           typename ValueType1,
           typename ValueType2,
-          typename ValueType3,
-          unsigned int VECTORS_PER_BLOCK,
-          unsigned int THREADS_PER_VECTOR>
+          typename ValueType3>
 __global__ void
 ktt_csr_vector_kernel(const unsigned int num_rows,
                        const IndexType*   Ap,
@@ -20,17 +14,6 @@ ktt_csr_vector_kernel(const unsigned int num_rows,
                        const ValueType2*  x,
                        ValueType3*        y)
 {
-
-#if TEST_PARAM == 0
-    if (threadIdx.x == 0 && blockIdx.x == 0) {
-        printf("Test param is 0.\n");
-    }
-#else
-    if (threadIdx.x == 0 && blockIdx.x == 0) {
-        printf("Fib of 20 is %d.\n", fib(20));
-    }
-#endif
-
     typedef ValueType1 ValueType;
 
     __shared__ volatile ValueType sdata[VECTORS_PER_BLOCK * THREADS_PER_VECTOR + THREADS_PER_VECTOR / 2];  // padded to avoid reduction conditionals

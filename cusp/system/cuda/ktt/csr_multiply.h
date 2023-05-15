@@ -1,25 +1,18 @@
-#pragma once 
+#pragma once
+
+#include <cusp/detail/config.h>
+
+#include <cusp/ktt/detail/external/nameof.hpp>
+#include <cusp/system/cuda/ktt/utils.h>
+
+#include <cusp/csr_matrix.h>
+#include <cusp/array1d.h>
+#include <cusp/system/cuda/utils.h>
+
+#include <thrust/fill.h>
 
 #include <iostream>
 
-#include <cusp/ktt/detail/external/nameof.hpp>
-#include <cusp/ktt/detail/ktt.inl>
-#include <cusp/system/cuda/arch.h> // max_active_blocks
-
-#include <cusp/system/cuda/ktt/kernels/csr_kernel.h>
-#include <cusp/system/cuda/ktt/utils.h>
-
-namespace cusp::system::cuda::ktt::csr {
-    inline ::ktt::KernelId get_kernel_id(::ktt::KernelDefinitionId id,  std::string kernel_name) {
-        static ::ktt::KernelId kernel = cusp::ktt::detail::tuner->CreateSimpleKernel(kernel_name, id);
-        return kernel;
-    }
-}
-
-template<>
-inline ::ktt::KernelId cusp::ktt::detail::get_kernel_id<cusp::csr_format>() {
-    return cusp::system::cuda::ktt::csr::get_kernel_id(0, ""); 
-}
 
 namespace cusp {
 
@@ -31,108 +24,147 @@ namespace ktt {
 
 namespace csr {
 
-inline void setup_tuning_parameters(::ktt::Tuner& tuner, ::ktt::KernelId kernel) {
-    tuner.AddParameter(kernel, "TEST_PARAM", std::vector<uint64_t>{0, 1, 2});
+
+inline void setup_tuning_parameters(const kernel_context& kernel)
+{
+    auto& tuner = *kernel.tuner;
+    auto kernel_id = kernel.kernel_id;
+
+    tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 128 });
+    tuner.AddParameter(kernel_id, "THREADS_PER_VECTOR", std::vector<uint64_t>{ 32 });
+
+    tuner.AddThreadModifier(
+        kernel.kernel_id,
+        { kernel.definition_ids[0] },
+        ::ktt::ModifierType::Local,
+        ::ktt::ModifierDimension::X,
+        { std::string("BLOCK_SIZE") },
+        [] (const uint64_t defaultSize, const std::vector<uint64_t>& parameters) {
+            return parameters[0];
+        }
+    );
 }
+
+
+template<typename IndexType,
+         typename ValueType1,
+         typename ValueType2,
+         typename ValueType3>
+kernel_context initialize_kernel(::ktt::Tuner& tuner)
+{
+    std::string kernel_path =
+        STRING(CUSP_PATH) "/cusp/system/cuda/ktt/kernels/csr_kernel.h";
+
+    kernel_context kernel(tuner);
+
+    std::vector< std::string > type_names {
+        std::string(NAMEOF_TYPE(IndexType)),
+        std::string(NAMEOF_TYPE(ValueType1)),
+        std::string(NAMEOF_TYPE(ValueType2)),
+        std::string(NAMEOF_TYPE(ValueType3)),
+    };
+
+    // NOTE: These can be anything since they are awlays set in the launcher.
+    // So use some values that will hopefully cause a crash if not set properly
+    // in the launcher.
+    ::ktt::DimensionVector block_size(0);
+    ::ktt::DimensionVector grid_size(0);
+
+    auto definition_id = tuner.AddKernelDefinitionFromFile(
+        "ktt_csr_vector_kernel",
+        kernel_path,
+        grid_size,
+        block_size,
+        type_names
+    );
+
+    kernel.definition_ids.push_back(definition_id);
+    kernel.kernel_id = tuner.CreateSimpleKernel("CsrKernel", definition_id);
+
+    setup_tuning_parameters(kernel);
+
+    return kernel;
+}
+
 
 } // namespace csr
 
-template <typename DerivedPolicy,
-          typename MatrixType,
-          typename VectorType1,
-          typename VectorType2>
-void multiply(cuda::execution_policy<DerivedPolicy>& exec,
-              const MatrixType& A,
-              const VectorType1& x,
-              VectorType2& y,
-              cusp::csr_format)
+
+template<typename IndexType,
+         typename ValueType1,
+         typename ValueType2,
+         typename ValueType3>
+const kernel_context& get_kernel(::ktt::Tuner& tuner, cusp::csr_format format)
 {
-    static_assert( std::is_same_v<cusp::device_memory, typename MatrixType::memory_space>
-                   && std::is_same_v<cusp::device_memory, typename VectorType1::memory_space>
-                   && std::is_same_v<cusp::device_memory, typename VectorType2::memory_space>, 
-                   "All arguments must be in device memory." );
+    static kernel_context kernel =
+        csr::initialize_kernel<IndexType, ValueType1, ValueType2, ValueType3>(tuner);
 
-    using ValueType = typename MatrixType::value_type;
-
-    if (A.num_entries == 0) {
-        thrust::fill(y.begin(), y.end(), ValueType(0));
-        return;
-    }
-
-    std::cout << "Hello from out thing\n";
-
-    // copied from csr_vector_spmv.h
-    typedef typename MatrixType::row_offsets_array_type::const_iterator     RowIterator;
-    typedef typename MatrixType::column_indices_array_type::const_iterator  ColumnIterator;
-    typedef typename MatrixType::values_array_type::const_iterator          ValueIterator1;
-
-    typedef typename VectorType1::const_iterator                            ValueIterator2;
-    typedef typename VectorType2::iterator                                  ValueIterator3;
-
-    auto& tuner = *cusp::ktt::detail::tuner;
-
-    std::string path = STRING(CUSP_PATH) "/cusp/system/cuda/ktt/kernels/csr_kernel.h";
-
-    const size_t THREADS_PER_BLOCK  = 128;
-    const size_t THREADS_PER_VECTOR = 32;
-    const size_t VECTORS_PER_BLOCK  = THREADS_PER_BLOCK / THREADS_PER_VECTOR;
-    
-    std::vector< std::string > type_names {
-        std::string(NAMEOF_TYPE(typename MatrixType::index_type)),
-        std::string(NAMEOF_TYPE(typename MatrixType::value_type)),
-        std::string(NAMEOF_TYPE(typename VectorType1::value_type)),
-        std::string(NAMEOF_TYPE(typename VectorType2::value_type)),
-        std::to_string(VECTORS_PER_BLOCK),
-        std::to_string(THREADS_PER_VECTOR)
-    };
-
-    // TODO: we probably wanna change this later
-    const size_t MAX_BLOCKS = cusp::system::cuda::detail::max_active_blocks(
-                                  ktt_csr_vector_kernel<typename MatrixType::index_type, typename MatrixType::value_type,
-                                  typename VectorType1::value_type, typename VectorType2::value_type,
-                                  VECTORS_PER_BLOCK, THREADS_PER_VECTOR>, THREADS_PER_BLOCK, (size_t) 0);
-    const size_t NUM_BLOCKS = std::min<size_t>(MAX_BLOCKS, DIVIDE_INTO(A.num_rows, VECTORS_PER_BLOCK));
-
-    const ::ktt::DimensionVector blockDimensions(THREADS_PER_BLOCK);
-    const ::ktt::DimensionVector gridDimensions(NUM_BLOCKS);
-
-    ::ktt::KernelDefinitionId definition = tuner.GetKernelDefinitionId("ktt_csr_vector_kernel", type_names);
-
-    bool called_first_time = definition == ::ktt::InvalidKernelDefinitionId; 
-
-    if (called_first_time) {
-        definition = tuner.AddKernelDefinitionFromFile(
-            "ktt_csr_vector_kernel", 
-            path, 
-            gridDimensions,
-            blockDimensions,
-            type_names);
-    }
-
-    ::ktt::KernelId kernel = csr::get_kernel_id(definition, "CsrKernel");
-
-    if (called_first_time) {
-        csr::setup_tuning_parameters(tuner, kernel);
-    }
-
-    auto num_rows_id = tuner.AddArgumentScalar(A.num_rows);
-    auto Ap_id = add_arg(A.row_offsets); 
-    auto Aj_id = add_arg(A.column_indices);
-    auto Ax_id = add_arg(A.values);
-    auto x_id = add_arg(x);
-    auto y_id = add_arg(y, ::ktt::ArgumentAccessType::ReadWrite);
-
-    std::vector<::ktt::ArgumentId> args = { num_rows_id, Ap_id, Aj_id, Ax_id, x_id, y_id };
-
-    tuner.SetArguments(definition, args);
-
-    tuner.TuneIteration(kernel, {});
-
-    tuner.SetArguments(definition, {});
-    for (auto arg : args) {
-        tuner.RemoveArgument(arg);
-    }
+    return kernel;
 }
+
+
+template <typename IndexType,
+          typename ValueType1,
+          typename ValueType2,
+          typename ValueType3>
+std::vector<::ktt::ArgumentId>
+add_arguments(const kernel_context& kernel,
+              const cusp::csr_matrix<IndexType, ValueType1, cusp::device_memory>& A,
+              const cusp::array1d<ValueType2, cusp::device_memory>& x,
+              cusp::array1d<ValueType3, cusp::device_memory>& y)
+{
+    auto args = add_arguments(*kernel.tuner,
+                              A.num_rows, A.row_offsets, A.column_indices,
+                              A.values, x, y);
+
+    kernel.tuner->SetArguments(kernel.definition_ids[0], args);
+
+    return args;
+}
+
+
+// Returns the argument id of the y vector given a vector of arguments
+// returned by a previous call of `add_arguments`.
+inline ::ktt::ArgumentId
+get_output_argument(const std::vector<::ktt::ArgumentId>& arguments,
+                    cusp::csr_format)
+{
+    return arguments[5];
+}
+
+
+template <typename IndexType,
+          typename ValueType1,
+          typename ValueType2,
+          typename ValueType3>
+auto get_launcher(const kernel_context& ctx,
+                  const cusp::csr_matrix<IndexType, ValueType1, cusp::device_memory>& A,
+                  const cusp::array1d<ValueType2, cusp::device_memory>& x,
+                  cusp::array1d<ValueType3, cusp::device_memory>& y,
+                  bool profile = false)
+{
+    return [&, profile] (::ktt::ComputeInterface& interface)
+    {
+        auto conf = interface.GetCurrentConfiguration();
+
+        ::ktt::DimensionVector block_size =
+            interface.GetCurrentLocalSize(ctx.definition_ids[0]);
+
+        auto threads_per_vector = get_parameter_uint(conf, "THREADS_PER_VECTOR");
+        auto vectors_per_block = block_size.GetSizeX() / threads_per_vector;
+
+        ::ktt::DimensionVector grid_size(
+            DIVIDE_INTO(A.num_rows, vectors_per_block));
+
+        if (!profile) {
+            interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
+        } else {
+            interface.RunKernelWithProfiling(ctx.definition_ids[0],
+                                             grid_size, block_size);
+        }
+    };
+}
+
 
 } // namespace ktt
 

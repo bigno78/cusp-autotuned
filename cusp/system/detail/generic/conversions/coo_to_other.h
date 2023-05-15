@@ -137,7 +137,8 @@ convert(thrust::execution_policy<DerivedPolicy>& exec,
         DestinationType& dst,
         cusp::coo_format&,
         cusp::dia_format&,
-        size_t alignment = 32)
+        size_t alignment = 32,
+        bool dont_throw = false)
 {
     typedef typename DestinationType::index_type   IndexType;
     typedef typename DestinationType::value_type   ValueType;
@@ -156,7 +157,7 @@ convert(thrust::execution_policy<DerivedPolicy>& exec,
     const float size       = float(occupied_diagonals) * float(src.num_rows);
     const float fill_ratio = size / std::max(1.0f, float(src.num_entries));
 
-    if (max_fill < fill_ratio && size > threshold)
+    if (max_fill < fill_ratio && size > threshold && !dont_throw)
         throw cusp::format_conversion_exception("dia_matrix fill-in would exceed maximum tolerance");
 
     // compute number of occupied diagonals and enumerate them
@@ -219,7 +220,8 @@ convert(thrust::execution_policy<DerivedPolicy>& exec,
         cusp::coo_format&,
         cusp::ell_format&,
         size_t num_entries_per_row = 0,
-        size_t alignment = 32)
+        size_t alignment = 32,
+        bool dont_throw = false)
 {
     typedef typename DestinationType::index_type   IndexType;
     typedef typename DestinationType::value_type   ValueType;
@@ -242,7 +244,7 @@ convert(thrust::execution_policy<DerivedPolicy>& exec,
         const float size       = float(max_entries_per_row) * float(src.num_rows);
         const float fill_ratio = size / std::max(1.0f, float(src.num_entries));
 
-        if (max_fill < fill_ratio && size > threshold)
+        if (max_fill < fill_ratio && size > threshold && !dont_throw)
             throw cusp::format_conversion_exception("ell_matrix fill-in would exceed maximum tolerance");
 
         num_entries_per_row = max_entries_per_row;

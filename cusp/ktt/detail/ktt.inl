@@ -15,6 +15,7 @@ namespace ktt {
 
 namespace detail {
 
+
 inline std::unique_ptr<::ktt::Tuner> tuner;
 inline bool is_enabled = true;
 
@@ -41,9 +42,11 @@ inline void lazy_init()
             CUstream stream;
             cuStreamCreate(&stream, CU_STREAM_DEFAULT);
 
-            ::ktt::ComputeApiInitializer initializer(context, std::vector<::ktt::ComputeQueue>{ stream });
+            std::vector<::ktt::ComputeQueue> queues = { stream };
+            ::ktt::ComputeApiInitializer initializer(context, queues);
 
-            tuner = std::make_unique<::ktt::Tuner>(::ktt::ComputeApi::CUDA, initializer);
+            tuner = std::make_unique<::ktt::Tuner>(::ktt::ComputeApi::CUDA,
+                                                   initializer);
         }
 
         std::string compiler_flags = "-std=c++17 ";
@@ -51,7 +54,6 @@ inline void lazy_init()
         compiler_flags += "-lineinfo ";
 #endif
         tuner->SetCompilerOptions(compiler_flags);
-
         tuner->SetValidationMode(::ktt::ValidationMode::OfflineTuning);
 
         std::atexit(cleanup);
@@ -77,36 +79,43 @@ inline ::ktt::Tuner& get_tuner()
 }
 
 
-template <typename Matrix,
+template <template<typename, typename, typename> typename Matrix,
+          typename IndexType,
           typename ValueType1,
-          typename ValueType2>
-::ktt::KernelResult multiply(const Matrix& A,
-              const cusp::array1d<ValueType1, cusp::device_memory>& x,
-              cusp::array1d<ValueType2, cusp::device_memory>& y)
+          typename ValueType2,
+          typename ValueType3>
+::ktt::KernelResult multiply(
+     const Matrix<IndexType, ValueType1, cusp::device_memory>& A,
+     const cusp::array1d<ValueType2, cusp::device_memory>& x,
+     cusp::array1d<ValueType3, cusp::device_memory>& y)
 {
     return cusp::system::cuda::ktt::multiply(get_tuner(), A, x, y);
 }
 
 
-template <typename Matrix,
+template <template<typename, typename, typename> typename Matrix,
+          typename IndexType,
           typename ValueType1,
-          typename ValueType2>
-::ktt::KernelResult multiply(const Matrix& A,
-                             const cusp::array1d<ValueType1, cusp::device_memory>& x,
-                             cusp::array1d<ValueType2, cusp::device_memory>& y,
-                             const ::ktt::KernelConfiguration& configuration,
-                             bool run_with_profiling)
+          typename ValueType2,
+          typename ValueType3>
+::ktt::KernelResult multiply(
+     const Matrix<IndexType, ValueType1, cusp::device_memory>& A,
+     const cusp::array1d<ValueType2, cusp::device_memory>& x,
+     cusp::array1d<ValueType3, cusp::device_memory>& y,
+     const ::ktt::KernelConfiguration& configuration,
+     bool run_with_profiling)
 {
     return cusp::system::cuda::ktt::multiply(get_tuner(), A, x, y, configuration, run_with_profiling);
 }
 
 
-template <typename IndexType,
+template <template<typename, typename, typename> typename Matrix,
+          typename IndexType,
           typename ValueType1,
           typename ValueType2,
           typename ValueType3>
 std::vector<::ktt::KernelResult>
-tune(const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
+tune(const Matrix<IndexType, ValueType1, cusp::device_memory>& A,
      const cusp::array1d<ValueType2, cusp::device_memory>& x,
      cusp::array1d<ValueType3, cusp::device_memory>& y,
      std::optional<::ktt::ReferenceComputation> reference_computation)
@@ -114,33 +123,18 @@ tune(const cusp::dia_matrix<IndexType, ValueType1, cusp::device_memory>& A,
     return cusp::system::cuda::ktt::tune(get_tuner(), A, x, y, reference_computation);
 }
 
-
-template<typename IndexType,
-         typename ValueType1,
-         typename ValueType2,
-         typename ValueType3,
-         typename Format>
-void reset_tuning()
-{
-    using namespace cusp::system::cuda::ktt;
-
-    kernel_context kernel = get_kernel<IndexType, ValueType1, ValueType2, ValueType3>(get_tuner(), Format{});
-    detail::tuner->ClearData(kernel.kernel_id);
-}
-
-
 template <typename MatrixType,
           typename ValueType1,
-          typename ValueType2>
+          typename ValueType2,
+          typename MemorySpace1,
+          typename MemorySpace2>
 void reset_tuning(const MatrixType& A,
-                  const cusp::array1d<ValueType1, cusp::device_memory>& x,
-                  cusp::array1d<ValueType2, cusp::device_memory>& y)
+                  const cusp::array1d<ValueType1, MemorySpace1>& x,
+                  cusp::array1d<ValueType2, MemorySpace2>& y)
 {
-    using IndexType = typename MatrixType::index_type;
-    using ValueType = typename MatrixType::value_type;
-    using Format = typename MatrixType::format;
-
-    return reset_tuning<IndexType, ValueType, ValueType2, ValueType2, Format>();
+    auto& tuner = get_tuner();
+    const auto& kernel = cusp::system::cuda::ktt::get_kernel(tuner, A, x, y);
+    tuner.ClearData(kernel.kernel_id);
 }
 
 

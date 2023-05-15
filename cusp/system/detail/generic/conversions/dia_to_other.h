@@ -41,6 +41,7 @@
 #include <thrust/iterator/zip_iterator.h>
 
 #include <cassert>
+#include <iostream>
 
 namespace cusp
 {
@@ -211,6 +212,62 @@ convert(thrust::execution_policy<DerivedPolicy>& exec,
 
     thrust::copy(exec, src.values.values.begin(), src.values.values.end(), dst.values.values.begin());
 
+    using StridedIndexIterator = thrust::transform_iterator<
+                                    cusp::multiplies_value<IndexType>,
+                                    IndexIterator>;
+    using RowElemIndicesIterator = thrust::transform_iterator<
+                                    cusp::plus_value<IndexType>,
+                                    StridedIndexIterator>;
+    using RowColsIterator = thrust::permutation_iterator<
+                                decltype(dst.column_indices.values.begin()),
+                                RowElemIndicesIterator>;
+    using RowValsIterator = thrust::permutation_iterator<
+                                decltype(dst.values.values.begin()),
+                                RowElemIndicesIterator>;
+
+    for (size_t row_idx = 0; row_idx < src.num_rows; ++row_idx)
+    {
+        StridedIndexIterator strided_cols(
+                                IndexIterator(0),
+                                cusp::multiplies_value<IndexType>(pitch));
+        RowElemIndicesIterator elem_indices(
+                                strided_cols,
+                                cusp::plus_value<IndexType>((IndexType)row_idx));
+
+        RowColsIterator row_cols(dst.column_indices.values.begin(), elem_indices);
+        RowValsIterator row_vals(dst.values.values.begin(), elem_indices);
+
+        thrust::stable_partition(exec,
+                                 row_vals,
+                                 row_vals + dst.column_indices.num_cols,
+                                 row_cols,
+                                 thrust::placeholders::_1 != IndexType(-1));
+
+        thrust::stable_partition(exec,
+                                 row_cols,
+                                 row_cols + dst.column_indices.num_cols,
+                                 thrust::placeholders::_1 != IndexType(-1));
+    }
+
+    // for (int row = 0; row < dst.num_rows; ++row)
+    // {
+    //     int last = 0;
+    //     for (int col = 0; col < dst.column_indices.num_cols; ++col)
+    //     {
+    //         if (dst.column_indices(row, col) >= 0)
+    //         {
+    //             auto tmp1 = dst.column_indices(row, last);
+    //             dst.column_indices(row, last) = dst.column_indices(row, col);
+    //             dst.column_indices(row, col) = tmp1;
+
+    //             auto tmp2 = dst.values(row, last);
+    //             dst.values(row, last) = dst.values(row, col);
+    //             dst.values(row, col) = tmp2;
+
+    //             last++;
+    //         }
+    //     }
+    // }
 }
 
 } // end namespace generic

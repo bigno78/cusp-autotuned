@@ -24,6 +24,13 @@
 
 #include <algorithm>
 
+#ifdef TIME_CSR
+#include <chrono>
+#include <iostream>
+
+namespace krn = std::chrono;
+#endif
+
 namespace cusp
 {
 namespace system
@@ -190,11 +197,22 @@ void __spmv_csr_vector(cuda::execution_policy<DerivedPolicy>& exec,
 
     cudaStream_t s = stream(thrust::detail::derived_cast(exec));
 
+    #ifdef TIME_CSR
+        auto start = krn::steady_clock::now();
+    #endif
+
     spmv_csr_vector_kernel<RowIterator, ColumnIterator, ValueIterator1, ValueIterator2, ValueIterator3,
                            UnaryFunction, BinaryFunction1, BinaryFunction2,
                            VECTORS_PER_BLOCK, THREADS_PER_VECTOR> <<<NUM_BLOCKS, THREADS_PER_BLOCK, 0, s>>>
                            (A.num_rows, A.row_offsets.begin(), A.column_indices.begin(), A.values.begin(), x.begin(), y.begin(),
                             initialize, combine, reduce);
+
+    #ifdef TIME_CSR
+        cudaStreamSynchronize(s);
+        auto end = krn::steady_clock::now();
+        size_t time = krn::duration_cast<krn::microseconds>(end - start).count();
+        std::cout << "cusp csr kernel: " << time << " us\n";
+    #endif
 }
 
 template <typename DerivedPolicy,
