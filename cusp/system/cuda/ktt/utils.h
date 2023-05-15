@@ -92,7 +92,7 @@ inline void remove_arguments(const kernel_context& kernel, const std::vector<::k
 }
 
 
-uint64_t get_parameter_uint(const ::ktt::KernelConfiguration& conf,
+inline uint64_t get_parameter_uint(const ::ktt::KernelConfiguration& conf,
                             const std::string& name)
 {
     for (const auto& pair : conf.GetPairs())
@@ -102,7 +102,7 @@ uint64_t get_parameter_uint(const ::ktt::KernelConfiguration& conf,
     throw std::runtime_error("No paramater with name: " + name);
 }
 
-double get_parameter_double(const ::ktt::KernelConfiguration& conf,
+inline double get_parameter_double(const ::ktt::KernelConfiguration& conf,
                             const std::string& name)
 {
     for (const auto& pair : conf.GetPairs())

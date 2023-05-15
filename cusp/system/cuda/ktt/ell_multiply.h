@@ -23,7 +23,7 @@ inline void setup_common_tuning_parameters(const kernel_context& kernel)
     auto kernel_id = kernel.kernel_id;
 
     tuner.AddParameter(kernel_id, "BLOCK_SIZE",      u64_vec{ 128, 256, 512 });
-    tuner.AddParameter(kernel_id, "UNCACHED_LOADS",  u64_vec{ 0, 1 });
+    tuner.AddParameter(kernel_id, "SPECIAL_LOADS",  u64_vec{ 0, 1 });
     tuner.AddParameter(kernel_id, "DISABLE_UNROLL",  u64_vec{ 0, 1 });
     tuner.AddParameter(kernel_id, "PREFETCH_FACTOR", u64_vec{ 0, 2, 4 });
     tuner.AddParameter(kernel_id, "THREADS_PER_ROW", u64_vec{ 1, 2, 4, 8 });
@@ -58,7 +58,6 @@ inline void setup_ell_tuning_parameters(const kernel_context& kernel)
     tuner.AddParameter(kernel_id, "BREAK", u64_vec{ 0, 1 });
 
     // BREAK can be used only when there is no prefetching
-    // TODO(KTT): Implement prefetching when using early break and remove this
     tuner.AddConstraint(
             kernel.kernel_id,
             { "BREAK", "PREFETCH_FACTOR" },

@@ -23,11 +23,14 @@ namespace ktt {
 // instead of having to manually specify the types.
 template <typename MatrixType,
           typename ValueType1,
-          typename ValueType2>
-kernel_context get_kernel(::ktt::Tuner& tuner,
-                          const MatrixType& A,
-                          const cusp::array1d<ValueType1, cusp::device_memory>& x,
-                          cusp::array1d<ValueType2, cusp::device_memory>& y)
+          typename ValueType2,
+          typename MemorySpace1,
+          typename MemorySpace2>
+kernel_context get_kernel(
+    ::ktt::Tuner& tuner,
+    const MatrixType& A,
+    const cusp::array1d<ValueType1, MemorySpace1>& x,
+    cusp::array1d<ValueType2, MemorySpace2>& y)
 {
     using IndexType = typename MatrixType::index_type;
     using ValueType = typename MatrixType::value_type;
@@ -50,8 +53,11 @@ kernel_context get_kernel(::ktt::Tuner& tuner,
 template <typename MatrixType,
           typename VectorType1,
           typename VectorType2>
-::ktt::KernelResult multiply(::ktt::Tuner& tuner, const MatrixType& A,
-                             const VectorType1& x, VectorType2& y)
+::ktt::KernelResult
+multiply(::ktt::Tuner& tuner,
+         const MatrixType& A,
+         const VectorType1& x,
+         VectorType2& y)
 {
     const kernel_context& kernel = get_kernel(tuner, A, x, y);
 
@@ -72,8 +78,11 @@ template <typename MatrixType,
           typename VectorType1,
           typename VectorType2>
 ::ktt::KernelResult
-multiply(::ktt::Tuner& tuner, const MatrixType& A, const VectorType1& x,
-         VectorType2& y, const ::ktt::KernelConfiguration& configuration,
+multiply(::ktt::Tuner& tuner,
+         const MatrixType& A,
+         const VectorType1& x,
+         VectorType2& y,
+         const ::ktt::KernelConfiguration& configuration,
          bool run_with_profiling = false)
 {
     const kernel_context& kernel = get_kernel(tuner, A, x, y);
@@ -95,8 +104,10 @@ template <typename MatrixType,
           typename VectorType1,
           typename VectorType2>
 std::vector<::ktt::KernelResult>
-tune(::ktt::Tuner& tuner, const MatrixType& A,
-     const VectorType1& x, VectorType2& y,
+tune(::ktt::Tuner& tuner,
+     const MatrixType& A,
+     const VectorType1& x,
+     VectorType2& y,
      std::optional<::ktt::ReferenceComputation> ref_computation = std::nullopt)
 {
     using Format = typename MatrixType::format;

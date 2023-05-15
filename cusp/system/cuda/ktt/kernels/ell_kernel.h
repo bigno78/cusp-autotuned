@@ -9,14 +9,10 @@
 template<typename T>
 __device__ T load(const T* addr)
 {
-#if UNCACHED_LOADS == 0
+#if SPECIAL_LOADS == 0
     return *addr;
-#elif UNCACHED_LOADS == 1
+#elif SPECIAL_LOADS == 1
     return __ldcv(addr);
-#elif UNCACHED_LOADS == 2
-    return __ldcs(addr);
-#elif UNCACHED_LOADS == 3
-    return __ldlu(addr);
 #endif
 }
 
@@ -35,30 +31,30 @@ struct Prefetcher : Prefetcher<IndexType, ValueType,  K - 1>
     __device__
     void prefetch_cols(const IndexType* __restrict__ Aj,
                       IndexType offset,
-                      IndexType pitch,
+                      IndexType stride,
                       IndexType i)
     {
-        col = load(Aj + offset + i*pitch);
-        parent::prefetch_cols(Aj, offset, pitch, i + 1);
+        col = load(Aj + offset + i*stride);
+        parent::prefetch_cols(Aj, offset, stride, i + 1);
     }
 
     __device__
     void prefetch_vals(const ValueType* __restrict__ Ax,
                        const ValueType* __restrict__ x,
                        IndexType offset,
-                       IndexType pitch,
+                       IndexType stride,
                        IndexType i)
     {
 #ifndef ELLR
         if (col >= 0)
         {
 #endif
-            A_val = load(Ax + offset + i*pitch);
+            A_val = load(Ax + offset + i*stride);
             x_val = x[col];
 #ifndef ELLR
         }
 #endif
-        parent::prefetch_vals(Ax, x, offset, pitch, i + 1);
+        parent::prefetch_vals(Ax, x, offset, stride, i + 1);
     }
 
     __device__ ValueType accumulate_results()
@@ -73,12 +69,12 @@ struct Prefetcher<IndexType, ValueType, 0>
 {
     __device__
     void prefetch_cols(const IndexType* __restrict__ Aj, IndexType offset,
-                       IndexType pitch, IndexType i) { }
+                       IndexType stride, IndexType i) { }
 
     __device__
     void prefetch_vals(const ValueType* __restrict__ Ax,
                        const ValueType* __restrict__ x, IndexType offset,
-                       IndexType pitch, IndexType i) { }
+                       IndexType stride, IndexType i) { }
 
     __device__ ValueType accumulate_results()
     {
