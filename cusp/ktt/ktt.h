@@ -3,6 +3,8 @@
 #include <cusp/detail/config.h>
 #include <cusp/array1d.h>
 
+#include <optional>
+
 #include <Ktt.h>
 
 namespace cusp {
