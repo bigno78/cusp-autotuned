@@ -123,3 +123,5 @@ performance/spmm/spmm
 
 .vscode
 a.out
+
+/matrices

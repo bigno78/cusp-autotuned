@@ -2,6 +2,7 @@
 
 #include <cusp/system/cuda/ktt/kernel.h>
 
+#include <cusp/system/cuda/ktt/coo_multiply.h>
 #include <cusp/system/cuda/ktt/csr_multiply.h>
 #include <cusp/system/cuda/ktt/dia_multiply.h>
 #include <cusp/system/cuda/ktt/ell_multiply.h>
