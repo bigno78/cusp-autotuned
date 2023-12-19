@@ -1,18 +1,15 @@
+// native cusp
 #include <cusp/multiply.h>
 #include <cusp/array1d.h>
 #include <cusp/print.h>
 #include <cusp/coo_matrix.h>
 #include <cusp/io/matrix_market.h>
 
+// ktt cusp
 #include <cusp/ktt/ktt.h>
 
-#include <cmath>
-#include <type_traits>
-#include <sstream>
-#include <iomanip>
-#include <fstream>
-
 #include <chrono>       // chrono
+#include <type_traits>  // is_same
 #include <ostream>      // ostream
 
 template<typename Array>
@@ -49,6 +46,7 @@ auto run_multiply(Matrix& A, Array& x, Array& y)
     clear(y);
 
     auto& tuner = cusp::ktt::get_tuner();
+    tuner.SetTimeUnit(ktt::TimeUnit::Nanoseconds);
 
     auto kernel_ctx = cusp::system::cuda::ktt::get_kernel(tuner, A, x, y);
 
@@ -63,6 +61,26 @@ template<typename Matrix>
 void load(const std::string& path, Matrix& out)
 {
     cusp::io::read_matrix_market_file(out, path);
+}
+
+template<typename Unit, typename T>
+std::string show_diff(T diff)
+{
+    std::stringstream o;
+    auto count = std::chrono::duration_cast<Unit>(diff).count();
+
+    o << count;
+
+    if constexpr (std::is_same_v<Unit, std::chrono::milliseconds>)
+        o << "ms";
+    else if constexpr (std::is_same_v<Unit, std::chrono::microseconds>)
+        o << "us";
+    else if constexpr (std::is_same_v<Unit, std::chrono::nanoseconds>)
+        o << "ns";
+    else
+        return "invalid unit type";
+
+    return o.str();
 }
 
 int main(int argc, char** argv)
@@ -85,13 +103,20 @@ int main(int argc, char** argv)
     cusp::array1d<float, cusp::device_memory> x(A.num_cols, 1);
     cusp::array1d<float, cusp::device_memory> y(A.num_rows);
 
-    cusp::multiply(A, x, y);
-    std::cout << "Reference sum: " << sum(y) << "\n";
-
     auto start = std::chrono::steady_clock::now();
+
+    cusp::multiply(A, x, y);
+
     auto end = std::chrono::steady_clock::now();
-    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    std::cout << "Reference time: " << diff << " ms\n";
+
+    // auto diff = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    // std::cout << "Reference time: " << diff << " ns\n";
+
+    std::cout << "Reference time: "
+              << show_diff<std::chrono::nanoseconds>(end - start)
+              << "\n";
+
+    std::cout << "Reference sum: " << sum(y) << "\n";
 
     cusp::ktt::enable();
 
