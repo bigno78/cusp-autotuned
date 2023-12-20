@@ -131,34 +131,38 @@ int main(int argc, char** argv)
     // auto A = cusp::coo_matrix<int, float, cusp::device_memory>(100, 100, 10);
     // auto A = example_mat();
 
-    auto A = cusp::csr_matrix<int, float, cusp::device_memory>();
+    auto A = cusp::coo_matrix<int, float, cusp::device_memory>();
 
     cusp::io::read_matrix_market_file(A, file);
 
     cusp::array1d<float, cusp::device_memory> x(A.num_cols, 1);
     cusp::array1d<float, cusp::device_memory> y(A.num_rows);
+    cusp::array1d<float, cusp::device_memory> ref_y(A.num_rows);
 
     measure_time([&]()
     {
-        cusp::multiply(A, x, y);
+        cusp::multiply(A, x, ref_y);
         return 0;
     });
 
 
-    std::cout << "Reference sum: " << sum(y) << "\n";
+    std::cout << "Reference sum: " << sum(ref_y) << "\n";
+
+    print_array(ref_y) << "\n";
 
     cusp::ktt::enable();
 
-    const int COUNT = 5;
+    const int COUNT = 1;
     for (int i = 0; i < COUNT; ++i)
     {
         auto res = run_multiply(A, x, y);
         // auto res = measure_time([&](){ return run_multiply(A, x, y); });
         std::cout << "Configuration: "
-                << res.GetConfiguration().GetString() << "\n";
+                  << res.GetConfiguration().GetString() << "\n";
         // cusp::print(y);
-        // print_array(y) << "\n";
+        print_array(y) << "\n";
         std::cout << sum(y) << "\n";
+        std::cout << (y == ref_y) << std::endl;
     }
 
     return 0;
