@@ -1,96 +1,36 @@
-#pragma once
 
-#define VECTORS_PER_BLOCK (BLOCK_SIZE/THREADS_PER_VECTOR)
-
-template <typename IndexType,
-          typename ValueType1,
-          typename ValueType2,
-          typename ValueType3>
-__global__ void
-ktt_csr_vector_kernel(const unsigned int num_rows,
-                       const IndexType*   Ap,
-                       const IndexType*   Aj,
-                       const ValueType1*  Ax,
-                       const ValueType2*  x,
-                       ValueType3*        y)
+template <typename Idx, typename Val1, typename Val2, typename Val3>
+__device__
+void csr_kernel(const unsigned int num_rows,
+                const Idx*   Ar,
+                const Idx*   Ac,
+                const Val1*  Ax,
+                const Val2*  x,
+                Val3*        y)
 {
-    typedef ValueType1 ValueType;
+    const int idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
 
-    __shared__ volatile ValueType sdata[VECTORS_PER_BLOCK * THREADS_PER_VECTOR + THREADS_PER_VECTOR / 2];  // padded to avoid reduction conditionals
-    __shared__ volatile IndexType ptrs[VECTORS_PER_BLOCK][2];
-
-    const IndexType THREADS_PER_BLOCK = VECTORS_PER_BLOCK * THREADS_PER_VECTOR;
-
-    const IndexType thread_id   = THREADS_PER_BLOCK * blockIdx.x + threadIdx.x;    // global thread index
-    const IndexType thread_lane = threadIdx.x & (THREADS_PER_VECTOR - 1);          // thread index within the vector
-    const IndexType vector_id   = thread_id   /  THREADS_PER_VECTOR;               // global vector index
-    const IndexType vector_lane = threadIdx.x /  THREADS_PER_VECTOR;               // vector index within the block
-    const IndexType num_vectors = VECTORS_PER_BLOCK * gridDim.x;                   // total number of active vectors
-
-    for(IndexType row = vector_id; row < num_rows; row += num_vectors)
+    Val1 value;
+    if (idx < num_rows)
     {
-        // use two threads to fetch Ap[row] and Ap[row+1]
-        // this is considerably faster than the straightforward version
-        if(thread_lane < 2)
-            ptrs[vector_lane][thread_lane] = Ap[row + thread_lane];
-
-        const IndexType row_start = ptrs[vector_lane][0];                   //same as: row_start = Ap[row];
-        const IndexType row_end   = ptrs[vector_lane][1];                   //same as: row_end   = Ap[row+1];
-
-        // initialize local sum
-        ValueType sum = (thread_lane == 0) ? ValueType(0) : ValueType(0);
-
-        if (THREADS_PER_VECTOR == 32 && row_end - row_start > 32)
+        Idx row_start = Ar[idx];
+        Idx row_end = Ar[idx + 1];
+        for (int i = row_start; i < row_end; ++i)
         {
-            // ensure aligned memory access to Aj and Ax
-
-            IndexType jj = row_start - (row_start & (THREADS_PER_VECTOR - 1)) + thread_lane;
-
-            // accumulate local sums
-            if(jj >= row_start && jj < row_end)
-                sum = sum + Ax[jj]*x[Aj[jj]];
-
-            // accumulate local sums
-            for(jj += THREADS_PER_VECTOR; jj < row_end; jj += THREADS_PER_VECTOR)
-                sum = sum + Ax[jj]*x[Aj[jj]];
+            Val3 value = Ax[i] * x[Ac[i]];
+            y[idx] += value;
         }
-        else
-        {
-            // accumulate local sums
-            for(IndexType jj = row_start + thread_lane; jj < row_end; jj += THREADS_PER_VECTOR)
-                sum = sum + Ax[jj]*x[Aj[jj]];
-        }
-
-        // store local sum in shared memory
-        sdata[threadIdx.x] = sum;
-
-        // TODO: remove temp var WAR for MSVC
-        ValueType temp;
-
-        // reduce local sums to row sum
-        if (THREADS_PER_VECTOR > 16) {
-            temp = sdata[threadIdx.x + 16];
-            sdata[threadIdx.x] = sum = sum + temp;
-        }
-        if (THREADS_PER_VECTOR >  8) {
-            temp = sdata[threadIdx.x +  8];
-            sdata[threadIdx.x] = sum = sum+ temp;
-        }
-        if (THREADS_PER_VECTOR >  4) {
-            temp = sdata[threadIdx.x +  4];
-            sdata[threadIdx.x] = sum = sum+ temp;
-        }
-        if (THREADS_PER_VECTOR >  2) {
-            temp = sdata[threadIdx.x +  2];
-            sdata[threadIdx.x] = sum = sum+temp;
-        }
-        if (THREADS_PER_VECTOR >  1) {
-            temp = sdata[threadIdx.x +  1];
-            sdata[threadIdx.x] = sum = sum+temp;
-        }
-
-        // first thread writes the result
-        if (thread_lane == 0)
-            y[row] = ValueType(sdata[threadIdx.x]);
     }
+}
+
+template <typename Idx, typename Val1, typename Val2, typename Val3>
+__global__
+void csr_spmv(const unsigned int num_rows,
+              const Idx*   Ar,
+              const Idx*   Ac,
+              const Val1*  Ax,
+              const Val2*  x,
+              Val3*        y)
+{
+    csr_kernel<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
 }

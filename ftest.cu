@@ -96,7 +96,7 @@ int main(int argc, char** argv)
     // auto A = cusp::coo_matrix<int, float, cusp::device_memory>(100, 100, 10);
     // auto A = example_mat();
 
-    auto A = cusp::coo_matrix<int, float, cusp::device_memory>();
+    auto A = cusp::csr_matrix<int, float, cusp::device_memory>();
 
     cusp::io::read_matrix_market_file(A, file);
 

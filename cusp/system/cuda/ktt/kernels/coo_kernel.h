@@ -2,11 +2,11 @@
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
 void coo_kernel(const Idx* __restrict__ row_indices,
-                      const Idx* __restrict__ column_indices,
-                      const Val1* __restrict__ values,
-                      const int num_entries,
-                      const Val2* __restrict__ x,
-                      Val3* __restrict__ y)
+                const Idx* __restrict__ column_indices,
+                const Val1* __restrict__ values,
+                const int num_entries,
+                const Val2* __restrict__ x,
+                Val3* __restrict__ y)
 {
     // const int idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     // if (idx == 0)

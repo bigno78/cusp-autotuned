@@ -14,13 +14,7 @@
 #include <iostream>
 
 
-namespace cusp {
-
-namespace system {
-
-namespace cuda {
-
-namespace ktt {
+namespace cusp::system::cuda::ktt {
 
 namespace csr {
 
@@ -71,7 +65,7 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner)
     ::ktt::DimensionVector grid_size(0);
 
     auto definition_id = tuner.AddKernelDefinitionFromFile(
-        "ktt_csr_vector_kernel",
+        "csr_spmv",
         kernel_path,
         grid_size,
         block_size,
@@ -90,14 +84,13 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner)
 } // namespace csr
 
 
-template<typename IndexType,
-         typename ValueType1,
-         typename ValueType2,
-         typename ValueType3>
-const kernel_context& get_kernel(::ktt::Tuner& tuner, cusp::csr_format format)
+template<typename Idx, typename Val1,typename Val2, typename Val3,
+         typename MemorySpace>
+const kernel_context& get_kernel(::ktt::Tuner& tuner,
+                const cusp::csr_matrix<Idx, Val1, MemorySpace>&)
 {
     static kernel_context kernel =
-        csr::initialize_kernel<IndexType, ValueType1, ValueType2, ValueType3>(tuner);
+        csr::initialize_kernel<Idx, Val1, Val2, Val3>(tuner);
 
     return kernel;
 }
@@ -166,10 +159,4 @@ auto get_launcher(const kernel_context& ctx,
 }
 
 
-} // namespace ktt
-
-} // namespace cuda
-
-} // namespace system
-
-} // namespace cusp
+} // namespace cusp::system::cuda::ktt
