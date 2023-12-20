@@ -3,6 +3,7 @@
 #include <cusp/array1d.h>
 #include <cusp/print.h>
 #include <cusp/coo_matrix.h>
+#include <cusp/csr_matrix.h>
 #include <cusp/io/matrix_market.h>
 
 // ktt cusp
@@ -11,6 +12,59 @@
 #include <chrono>       // chrono
 #include <type_traits>  // is_same
 #include <ostream>      // ostream
+
+using MeasureUnit = std::chrono::microseconds;
+
+template<typename Unit>
+constexpr ktt::TimeUnit chrono_to_ktt_unit()
+{
+    if constexpr (std::is_same_v<Unit, std::chrono::milliseconds>)
+        return ktt::TimeUnit::Milliseconds;
+
+    if constexpr (std::is_same_v<Unit, std::chrono::microseconds>)
+        return ktt::TimeUnit::Microseconds;
+
+    if constexpr (std::is_same_v<Unit, std::chrono::nanoseconds>)
+        return ktt::TimeUnit::Nanoseconds;
+
+    // TODO: error if wrong
+}
+
+template<typename Unit, typename T>
+std::string show_diff(T diff)
+{
+    std::stringstream o;
+    auto count = std::chrono::duration_cast<Unit>(diff).count();
+
+    o << count;
+
+    if constexpr (std::is_same_v<Unit, std::chrono::milliseconds>)
+        o << "ms";
+    else if constexpr (std::is_same_v<Unit, std::chrono::microseconds>)
+        o << "us";
+    else if constexpr (std::is_same_v<Unit, std::chrono::nanoseconds>)
+        o << "ns";
+    else
+        return "invalid unit type";
+
+    return o.str();
+}
+
+template<typename Func>
+auto measure_time(Func func)
+{
+    auto start = std::chrono::steady_clock::now();
+
+    auto res = func();
+
+    auto end = std::chrono::steady_clock::now();
+
+    std::cout << "Time: "
+              << show_diff<MeasureUnit>(end - start)
+              << "\n";
+
+    return res;
+}
 
 template<typename Array>
 std::ostream& print_array(const Array& array, std::ostream& o = std::cout)
@@ -46,13 +100,14 @@ auto run_multiply(Matrix& A, Array& x, Array& y)
     clear(y);
 
     auto& tuner = cusp::ktt::get_tuner();
-    tuner.SetTimeUnit(ktt::TimeUnit::Nanoseconds);
+    tuner.SetTimeUnit(chrono_to_ktt_unit<MeasureUnit>());
 
     auto kernel_ctx = cusp::system::cuda::ktt::get_kernel(tuner, A, x, y);
 
     // auto conf = tuner.CreateConfiguration(kernel_ctx.kernel_id,
     //                 { { std::string("BLOCK_SIZE"), uint64_t(1) }, });
-    auto res = cusp::ktt::multiply(A, x, y);
+
+    auto res = measure_time([&](){ return cusp::ktt::multiply(A, x, y); });
 
     return res;
 }
@@ -61,26 +116,6 @@ template<typename Matrix>
 void load(const std::string& path, Matrix& out)
 {
     cusp::io::read_matrix_market_file(out, path);
-}
-
-template<typename Unit, typename T>
-std::string show_diff(T diff)
-{
-    std::stringstream o;
-    auto count = std::chrono::duration_cast<Unit>(diff).count();
-
-    o << count;
-
-    if constexpr (std::is_same_v<Unit, std::chrono::milliseconds>)
-        o << "ms";
-    else if constexpr (std::is_same_v<Unit, std::chrono::microseconds>)
-        o << "us";
-    else if constexpr (std::is_same_v<Unit, std::chrono::nanoseconds>)
-        o << "ns";
-    else
-        return "invalid unit type";
-
-    return o.str();
 }
 
 int main(int argc, char** argv)
@@ -103,18 +138,12 @@ int main(int argc, char** argv)
     cusp::array1d<float, cusp::device_memory> x(A.num_cols, 1);
     cusp::array1d<float, cusp::device_memory> y(A.num_rows);
 
-    auto start = std::chrono::steady_clock::now();
+    measure_time([&]()
+    {
+        cusp::multiply(A, x, y);
+        return 0;
+    });
 
-    cusp::multiply(A, x, y);
-
-    auto end = std::chrono::steady_clock::now();
-
-    // auto diff = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-    // std::cout << "Reference time: " << diff << " ns\n";
-
-    std::cout << "Reference time: "
-              << show_diff<std::chrono::nanoseconds>(end - start)
-              << "\n";
 
     std::cout << "Reference sum: " << sum(y) << "\n";
 
@@ -124,6 +153,7 @@ int main(int argc, char** argv)
     for (int i = 0; i < COUNT; ++i)
     {
         auto res = run_multiply(A, x, y);
+        // auto res = measure_time([&](){ return run_multiply(A, x, y); });
         std::cout << "Configuration: "
                 << res.GetConfiguration().GetString() << "\n";
         // cusp::print(y);
