@@ -131,7 +131,11 @@ int main(int argc, char** argv)
     // auto A = cusp::coo_matrix<int, float, cusp::device_memory>(100, 100, 10);
     // auto A = example_mat();
 
+    // auto A = cusp::csr_matrix<int, float, cusp::device_memory>();
+    // std::cout << "CSR\n";
+
     auto A = cusp::coo_matrix<int, float, cusp::device_memory>();
+    std::cout << "COO\n";
 
     cusp::io::read_matrix_market_file(A, file);
 
@@ -148,7 +152,7 @@ int main(int argc, char** argv)
 
     std::cout << "Reference sum: " << sum(ref_y) << "\n";
 
-    print_array(ref_y) << "\n";
+    // print_array(ref_y) << "\n";
 
     cusp::ktt::enable();
 
@@ -160,7 +164,7 @@ int main(int argc, char** argv)
         std::cout << "Configuration: "
                   << res.GetConfiguration().GetString() << "\n";
         // cusp::print(y);
-        print_array(y) << "\n";
+        // print_array(y) << "\n";
         std::cout << sum(y) << "\n";
         std::cout << (y == ref_y) << std::endl;
     }
