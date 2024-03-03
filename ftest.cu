@@ -12,6 +12,7 @@
 #include <chrono>       // chrono
 #include <type_traits>  // is_same
 #include <ostream>      // ostream
+#include <string>       // stoi
 
 using MeasureUnit = std::chrono::microseconds;
 
@@ -27,6 +28,7 @@ constexpr ktt::TimeUnit chrono_to_ktt_unit()
     if constexpr (std::is_same_v<Unit, std::chrono::nanoseconds>)
         return ktt::TimeUnit::Nanoseconds;
 
+    assert(false);
     // TODO: error if wrong
 }
 
@@ -38,12 +40,9 @@ std::string show_diff(T diff)
 
     o << count;
 
-    if constexpr (std::is_same_v<Unit, std::chrono::milliseconds>)
-        o << "ms";
-    else if constexpr (std::is_same_v<Unit, std::chrono::microseconds>)
-        o << "us";
-    else if constexpr (std::is_same_v<Unit, std::chrono::nanoseconds>)
-        o << "ns";
+    if      constexpr (std::is_same_v<Unit, std::chrono::milliseconds>) o << "ms";
+    else if constexpr (std::is_same_v<Unit, std::chrono::microseconds>) o << "us";
+    else if constexpr (std::is_same_v<Unit, std::chrono::nanoseconds>)  o << "ns";
     else
         return "invalid unit type";
 
@@ -79,12 +78,21 @@ std::ostream& print_array(const Array& array, std::ostream& o = std::cout)
     return o << " >";
 }
 
+// template<typename T, typename Mem>
+// auto sum(const cusp::array1d<T, Mem>& array)
+// {
+//     T total = 0;
+//     for (const auto& val : array)
+//         total += val;
+//     return total;
+// }
+
 template<typename T, typename Mem>
-auto sum(const cusp::array1d<T, Mem>& array)
+auto sparse_sum(const cusp::array1d<T, Mem>& array)
 {
     T total = 0;
-    for (const auto& val : array)
-        total += val;
+    for (std::size_t i = 0; i < array.size(); i = i *  2 + 1)
+        total += array[i];
     return total;
 }
 
@@ -122,11 +130,17 @@ int main(int argc, char** argv)
 {
     if (argc < 2)
     {
-        std::cerr << "usage: " << argv[0] << " matrix_path\n";
+        std::cerr << "usage: " << argv[0] << " matrix_path [count=5]\n";
         return 1;
     }
 
     auto file = std::string(argv[1]);
+
+    int COUNT = 5;
+    if (argc >= 3)
+        COUNT = std::stoi(argv[2]);
+
+    std::cout << "THRUST_VERSION=" << THRUST_VERSION << "\n";
 
     // auto A = cusp::coo_matrix<int, float, cusp::device_memory>(100, 100, 10);
     // auto A = example_mat();
@@ -143,6 +157,12 @@ int main(int argc, char** argv)
     cusp::array1d<float, cusp::device_memory> y(A.num_rows);
     cusp::array1d<float, cusp::device_memory> ref_y(A.num_rows);
 
+    cusp::ktt::disable();
+
+    // HEAT UP
+    for (int i = 0; i < 5; ++i)
+        cusp::multiply(A, x, ref_y);
+
     measure_time([&]()
     {
         cusp::multiply(A, x, ref_y);
@@ -150,13 +170,12 @@ int main(int argc, char** argv)
     });
 
 
-    std::cout << "Reference sum: " << sum(ref_y) << "\n";
+    std::cout << "Reference sum: " << sparse_sum(ref_y) << "\n";
 
     // print_array(ref_y) << "\n";
 
     cusp::ktt::enable();
 
-    const int COUNT = 1;
     for (int i = 0; i < COUNT; ++i)
     {
         auto res = run_multiply(A, x, y);
@@ -165,7 +184,7 @@ int main(int argc, char** argv)
                   << res.GetConfiguration().GetString() << "\n";
         // cusp::print(y);
         // print_array(y) << "\n";
-        std::cout << sum(y) << "\n";
+        std::cout << "Chk sum: " << sparse_sum(y) << "\n";
         std::cout << (y == ref_y) << std::endl;
     }
 
