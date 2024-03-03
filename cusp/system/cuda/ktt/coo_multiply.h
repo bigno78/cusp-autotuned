@@ -23,6 +23,7 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
 
+    tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 4, 8, 16, 32, 64 });
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", u64_vec{ 128, 256, 512 });
 
     tuner.AddThreadModifier(kernel.kernel_id,

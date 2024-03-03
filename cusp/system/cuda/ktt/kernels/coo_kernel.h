@@ -17,6 +17,8 @@ void coo_kernel(const Idx* __restrict__ row_indices,
     //     }
     // }
 
+#if VALUES_PER_THREAD == 1
+
     const int n = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     Val1 value;
     if (n < num_entries)
@@ -25,6 +27,40 @@ void coo_kernel(const Idx* __restrict__ row_indices,
         auto* ptr = &y[row_indices[n]];
         atomicAdd(ptr, value);
     }
+
+#else
+
+    const int idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    const int begin = idx * VALUES_PER_THREAD;
+
+    const int end = min(num_entries, begin + VALUES_PER_THREAD);
+
+    // no work left for this thread
+    if (begin >= end)
+        return;
+
+    Val1 value = 0;
+    Idx row = row_indices[ begin ];
+
+    for (int i = begin; i < end; ++i)
+    {
+        Idx cur = row_indices[ i ];
+
+        if (row != cur)
+        {
+            auto* ptr = &y[ row ];
+            atomicAdd(ptr, value);
+            value = 0;
+        }
+
+        value += values[ i ] * x[ column_indices[ i ] ];
+        row = cur;
+    }
+
+    auto* ptr = &y[ row ];
+    atomicAdd(ptr, value);
+
+#endif
 }
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
