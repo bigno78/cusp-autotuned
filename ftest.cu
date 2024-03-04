@@ -95,7 +95,7 @@ auto sparse_sum(const cusp::array1d<T, Mem>& array)
         total += array[i];
     return total;
 }
-
+#include <thrust/fill.h>
 template<typename Matrix, typename Array>
 auto run_multiply(Matrix& A, Array& x, Array& y)
 {
@@ -105,7 +105,8 @@ auto run_multiply(Matrix& A, Array& x, Array& y)
             array[i] = 0;
     };
 
-    clear(y);
+    // clear(y);
+    thrust::fill(y.begin(), y.end(), 1);
 
     auto& tuner = cusp::ktt::get_tuner();
     tuner.SetTimeUnit(chrono_to_ktt_unit<MeasureUnit>());
@@ -126,33 +127,11 @@ void load(const std::string& path, Matrix& out)
     cusp::io::read_matrix_market_file(out, path);
 }
 
-int main(int argc, char** argv)
+
+template<template<class T1, class T2, class T3> typename MatrixFmt>
+void run(const MatrixFmt<int, float, cusp::device_memory>& A,
+         const int COUNT)
 {
-    if (argc < 2)
-    {
-        std::cerr << "usage: " << argv[0] << " matrix_path [count=5]\n";
-        return 1;
-    }
-
-    auto file = std::string(argv[1]);
-
-    int COUNT = 5;
-    if (argc >= 3)
-        COUNT = std::stoi(argv[2]);
-
-    std::cout << "THRUST_VERSION=" << THRUST_VERSION << "\n";
-
-    // auto A = cusp::coo_matrix<int, float, cusp::device_memory>(100, 100, 10);
-    // auto A = example_mat();
-
-    // auto A = cusp::csr_matrix<int, float, cusp::device_memory>();
-    // std::cout << "CSR\n";
-
-    auto A = cusp::coo_matrix<int, float, cusp::device_memory>();
-    std::cout << "COO\n";
-
-    cusp::io::read_matrix_market_file(A, file);
-
     cusp::array1d<float, cusp::device_memory> x(A.num_cols, 1);
     cusp::array1d<float, cusp::device_memory> y(A.num_rows);
     cusp::array1d<float, cusp::device_memory> ref_y(A.num_rows);
@@ -160,7 +139,8 @@ int main(int argc, char** argv)
     cusp::ktt::disable();
 
     // HEAT UP
-    for (int i = 0; i < 5; ++i)
+    const int HEAT_UP_COUNT = 5;
+    for (int i = 0; i < HEAT_UP_COUNT; ++i)
         cusp::multiply(A, x, ref_y);
 
     measure_time([&]()
@@ -186,6 +166,40 @@ int main(int argc, char** argv)
         // print_array(y) << "\n";
         std::cout << "Chk sum: " << sparse_sum(y) << "\n";
         std::cout << (y == ref_y) << std::endl;
+    }
+}
+
+
+int main(int argc, char** argv)
+{
+    if (argc < 3)
+    {
+        std::cerr << "usage: " << argv[0] << " coo|csr matrix_path [count=5]\n";
+        return 1;
+    }
+
+    auto fmt = std::string(argv[1]);
+    auto file = std::string(argv[2]);
+
+    int COUNT = 5;
+    if (argc >= 4)
+        COUNT = std::stoi(argv[3]);
+
+    std::cout << "THRUST_VERSION=" << THRUST_VERSION << "\n";
+
+    if (fmt == "coo")
+    {
+        auto A = cusp::coo_matrix<int, float, cusp::device_memory>();
+        cusp::io::read_matrix_market_file(A, file);
+        std::cout << "COO\n";
+        run(A, COUNT);
+    }
+    else if (fmt == "csr")
+    {
+        auto A = cusp::csr_matrix<int, float, cusp::device_memory>();
+        cusp::io::read_matrix_market_file(A, file);
+        std::cout << "CSR\n";
+        run(A, COUNT);
     }
 
     return 0;
