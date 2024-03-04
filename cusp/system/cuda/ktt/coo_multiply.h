@@ -85,7 +85,7 @@ auto add_arguments(const kernel_context& kernel,
 {
     auto args =
         add_arguments(*kernel.tuner, A.row_indices, A.column_indices, A.values,
-                      A.values.size(), x, y);
+                      A.values.size(), x, y, y.size());
 
     kernel.tuner->SetArguments(kernel.definition_ids[0], args);
 
@@ -110,10 +110,13 @@ auto get_launcher(const kernel_context& ctx,
 {
     return [&, profile](::ktt::ComputeInterface& interface)
     {
+        const auto& conf = interface.GetCurrentConfiguration();
+        auto vals_per_thread = get_parameter_uint(conf, "VALUES_PER_THREAD");
+
         ::ktt::DimensionVector block_size =
             interface.GetCurrentLocalSize(ctx.definition_ids[0]);
         ::ktt::DimensionVector grid_size(
-            DIVIDE_INTO(A.num_entries, block_size.GetSizeX()));
+            DIVIDE_INTO(A.num_entries, vals_per_thread * block_size.GetSizeX()));
 
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);

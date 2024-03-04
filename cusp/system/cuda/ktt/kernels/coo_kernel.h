@@ -6,8 +6,13 @@ void coo_kernel(const Idx* __restrict__ row_indices,
                 const Val1* __restrict__ values,
                 const int num_entries,
                 const Val2* __restrict__ x,
-                Val3* __restrict__ y)
+                Val3* __restrict__ y,
+                const int vec_size)
 {
+    // if (BLOCK_SIZE * blockIdx.x + threadIdx.x == 0)
+    //     printf("... ktt coo_kernel ...\n");
+
+
     // const int idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     // if (idx == 0)
     // {
@@ -16,6 +21,13 @@ void coo_kernel(const Idx* __restrict__ row_indices,
     //         y[row_indices[n]] += values[n] * x[column_indices[n]];
     //     }
     // }
+
+    const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    const unsigned space = BLOCK_SIZE * gridDim.x;
+    for (unsigned i = ti; i < vec_size; i += space)
+    {
+        y[ i ] = 0;
+    }
 
 #if VALUES_PER_THREAD == 1
 
@@ -70,8 +82,9 @@ void coo_spmv(const Idx* __restrict__ row_indices,
                const Val1* __restrict__ values,
                const int num_entries,
                const Val2* __restrict__ x,
-               Val3* __restrict__ y)
+               Val3* __restrict__ y,
+               const int vec_size)
 {
     coo_kernel<Idx, Val1, Val2, Val3>
-              (row_indices, column_indices, values, num_entries, x, y);
+              (row_indices, column_indices, values, num_entries, x, y, vec_size);
 }
