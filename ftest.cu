@@ -9,27 +9,25 @@
 // ktt cusp
 #include <cusp/ktt/ktt.h>
 
-#include <chrono>       // chrono
-#include <type_traits>  // is_same
-#include <ostream>      // ostream
-#include <string>       // stoi
+// thrust
+#include <thrust/fill.h>    // fill
+
+#include <chrono>           // chrono
+#include <type_traits>      // is_same
+#include <ostream>          // ostream
+#include <string>           // stoi
 
 using MeasureUnit = std::chrono::microseconds;
 
 template<typename Unit>
 constexpr ktt::TimeUnit chrono_to_ktt_unit()
 {
-    if constexpr (std::is_same_v<Unit, std::chrono::milliseconds>)
-        return ktt::TimeUnit::Milliseconds;
-
-    if constexpr (std::is_same_v<Unit, std::chrono::microseconds>)
-        return ktt::TimeUnit::Microseconds;
-
-    if constexpr (std::is_same_v<Unit, std::chrono::nanoseconds>)
-        return ktt::TimeUnit::Nanoseconds;
-
+    using namespace std;
+    namespace ch = std::chrono;
+    if constexpr (is_same_v<Unit, ch::milliseconds>) return ktt::TimeUnit::Milliseconds;
+    if constexpr (is_same_v<Unit, ch::microseconds>) return ktt::TimeUnit::Microseconds;
+    if constexpr (is_same_v<Unit, ch::nanoseconds>)  return ktt::TimeUnit::Nanoseconds;
     assert(false);
-    // TODO: error if wrong
 }
 
 template<typename Unit, typename T>
@@ -40,9 +38,11 @@ std::string show_diff(T diff)
 
     o << count;
 
-    if      constexpr (std::is_same_v<Unit, std::chrono::milliseconds>) o << "ms";
-    else if constexpr (std::is_same_v<Unit, std::chrono::microseconds>) o << "us";
-    else if constexpr (std::is_same_v<Unit, std::chrono::nanoseconds>)  o << "ns";
+    using namespace std;
+    namespace ch = std::chrono;
+    if      constexpr (is_same_v<Unit, ch::milliseconds>) o << "ms";
+    else if constexpr (is_same_v<Unit, ch::microseconds>) o << "us";
+    else if constexpr (is_same_v<Unit, ch::nanoseconds>)  o << "ns";
     else
         return "invalid unit type";
 
@@ -50,17 +50,30 @@ std::string show_diff(T diff)
 }
 
 template<typename Func>
-auto measure_time(Func func)
+auto print_time(Func func)
 {
+    float delta_ms = 0;
+    cudaEvent_t cu_start, cu_stop;
+    cudaEventCreate(&cu_start);
+    cudaEventCreate(&cu_stop);
+
     auto start = std::chrono::steady_clock::now();
+    cudaEventRecord(cu_start);
 
     auto res = func();
 
+    cudaEventRecord(cu_stop);
     auto end = std::chrono::steady_clock::now();
 
-    std::cout << "Time: "
+    cudaEventSynchronize(cu_stop);
+    cudaEventElapsedTime(&delta_ms, cu_start, cu_stop);
+
+    std::cout << "Chrono Time:    "
               << show_diff<MeasureUnit>(end - start)
               << "\n";
+
+    std::cout << "CudaEvent Time: "
+                << delta_ms * 1000 << "us\n";
 
     return res;
 }
@@ -78,15 +91,6 @@ std::ostream& print_array(const Array& array, std::ostream& o = std::cout)
     return o << " >";
 }
 
-// template<typename T, typename Mem>
-// auto sum(const cusp::array1d<T, Mem>& array)
-// {
-//     T total = 0;
-//     for (const auto& val : array)
-//         total += val;
-//     return total;
-// }
-
 template<typename T, typename Mem>
 auto sparse_sum(const cusp::array1d<T, Mem>& array)
 {
@@ -95,28 +99,26 @@ auto sparse_sum(const cusp::array1d<T, Mem>& array)
         total += array[i];
     return total;
 }
-#include <thrust/fill.h>
+
 template<typename Matrix, typename Array>
 auto run_multiply(Matrix& A, Array& x, Array& y)
 {
-    auto clear = [](auto& array)
-    {
-        for (int i = 0; i < array.size(); ++i)
-            array[i] = 0;
-    };
+    auto clear = [](auto& array){ for (int i = 0; i < array.size(); ++i) array[i] = 0; };
 
     // clear(y);
     thrust::fill(y.begin(), y.end(), 1);
 
     auto& tuner = cusp::ktt::get_tuner();
     tuner.SetTimeUnit(chrono_to_ktt_unit<MeasureUnit>());
+    tuner.SetValidationMode(::ktt::ValidationMode::None);
+    tuner.SetLoggingLevel(::ktt::LoggingLevel::Off);
 
     auto kernel_ctx = cusp::system::cuda::ktt::get_kernel(tuner, A, x, y);
 
     // auto conf = tuner.CreateConfiguration(kernel_ctx.kernel_id,
     //                 { { std::string("BLOCK_SIZE"), uint64_t(1) }, });
 
-    auto res = measure_time([&](){ return cusp::ktt::multiply(A, x, y); });
+    auto res = print_time([&](){ return cusp::ktt::multiply(A, x, y); });
 
     return res;
 }
@@ -143,7 +145,7 @@ void run(const MatrixFmt<int, float, cusp::device_memory>& A,
     for (int i = 0; i < HEAT_UP_COUNT; ++i)
         cusp::multiply(A, x, ref_y);
 
-    measure_time([&]()
+    print_time([&]()
     {
         cusp::multiply(A, x, ref_y);
         return 0;
@@ -152,18 +154,19 @@ void run(const MatrixFmt<int, float, cusp::device_memory>& A,
 
     std::cout << "Reference sum: " << sparse_sum(ref_y) << "\n";
 
-    // print_array(ref_y) << "\n";
-
     cusp::ktt::enable();
 
     for (int i = 0; i < COUNT; ++i)
     {
         auto res = run_multiply(A, x, y);
-        // auto res = measure_time([&](){ return run_multiply(A, x, y); });
+
+        auto ktt_ns = res.GetKernelDuration();
+        std::cout << "KKT Time: "
+                  << ktt_ns / 1000 << "us\n";
+
         std::cout << "Configuration: "
                   << res.GetConfiguration().GetString() << "\n";
-        // cusp::print(y);
-        // print_array(y) << "\n";
+
         std::cout << "Chk sum: " << sparse_sum(y) << "\n";
         std::cout << (y == ref_y) << std::endl;
     }
@@ -201,6 +204,8 @@ int main(int argc, char** argv)
         std::cout << "CSR\n";
         run(A, COUNT);
     }
+    else
+        return std::cout << "Error: fmt must be ‹coo› or ‹csr›.\n", 1;
 
     return 0;
 }
