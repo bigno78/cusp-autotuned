@@ -10,16 +10,19 @@ void csr_kernel(const unsigned int num_rows,
 {
     const int idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
 
-    Val1 value;
+    Val1 value = 0;
     if (idx < num_rows)
     {
         Idx row_start = Ar[idx];
         Idx row_end = Ar[idx + 1];
         for (int i = row_start; i < row_end; ++i)
         {
-            Val3 value = Ax[i] * x[Ac[i]];
-            y[idx] += value;
+            // Val3 value = Ax[i] * x[Ac[i]];
+            // y[idx] += value;
+            Val3 val = Ax[i] * x[Ac[i]];
+            value += val;
         }
+        y[idx] = value;
     }
 }
 
