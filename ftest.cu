@@ -10,7 +10,9 @@
 #include <cusp/ktt/ktt.h>
 
 // thrust
-#include <thrust/fill.h>    // fill
+#include <thrust/fill.h>        // fill
+#include <thrust/reduce.h>      // reduce
+#include <thrust/functional.h>  // plus
 
 #include <chrono>           // chrono
 #include <type_traits>      // is_same
@@ -92,19 +94,15 @@ std::ostream& print_array(const Array& array, std::ostream& o = std::cout)
 }
 
 template<typename T, typename Mem>
-auto sparse_sum(const cusp::array1d<T, Mem>& array)
+double sparse_sum(const cusp::array1d<T, Mem>& array)
 {
-    T total = 0;
-    for (std::size_t i = 0; i < array.size(); i = i *  2 + 1)
-        total += array[i];
-    return total;
+    return thrust::reduce(array.begin(), array.end(), 0, thrust::plus<float>());
 }
 
 template<typename Matrix, typename Array>
 auto run_multiply(Matrix& A, Array& x, Array& y)
 {
-    auto clear = [](auto& array){ for (int i = 0; i < array.size(); ++i) array[i] = 0; };
-
+    // auto clear = [](auto& array){ for (int i = 0; i < array.size(); ++i) array[i] = 0; };
     // clear(y);
     thrust::fill(y.begin(), y.end(), 1);
 
@@ -140,20 +138,23 @@ void run(const MatrixFmt<int, float, cusp::device_memory>& A,
 
     cusp::ktt::disable();
 
-    // HEAT UP
+    // WARM UP GPU
     const int HEAT_UP_COUNT = 5;
     for (int i = 0; i < HEAT_UP_COUNT; ++i)
         cusp::multiply(A, x, ref_y);
+
+    thrust::fill(y.begin(), y.end(), 1);
 
     print_time([&]()
     {
         cusp::multiply(A, x, ref_y);
         return 0;
     });
+    std::cout << "Reference sum: " << sparse_sum(ref_y)
+              << "\n\n";
 
 
-    std::cout << "Reference sum: " << sparse_sum(ref_y) << "\n";
-
+    std::cout << "Autotuning:\n";
     cusp::ktt::enable();
 
     for (int i = 0; i < COUNT; ++i)
@@ -169,6 +170,20 @@ void run(const MatrixFmt<int, float, cusp::device_memory>& A,
 
         std::cout << "Chk sum: " << sparse_sum(y) << "\n";
         std::cout << (y == ref_y) << std::endl;
+    }
+
+    std::cout << "\n\nReference again:\n";
+    cusp::ktt::disable();
+    for (int i = 0; i < 30; ++i)
+    {
+        thrust::fill(y.begin(), y.end(), 1);
+        std::cout << "\n";
+        print_time([&]()
+        {
+            cusp::multiply(A, x, ref_y);
+            return 0;
+        });
+        std::cout << "Reference sum: " << sparse_sum(ref_y) << "\n";
     }
 }
 
