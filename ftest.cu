@@ -32,22 +32,23 @@ constexpr ktt::TimeUnit chrono_to_ktt_unit()
     assert(false);
 }
 
+template<typename Unit>
+const char* unit_str()
+{
+    using namespace std;
+    namespace ch = std::chrono;
+    if      constexpr (is_same_v<Unit, ch::milliseconds>) return "ms";
+    else if constexpr (is_same_v<Unit, ch::microseconds>) return "us";
+    else if constexpr (is_same_v<Unit, ch::nanoseconds>)  return "ns";
+    else return "invalid unit type";
+}
+
 template<typename Unit, typename T>
 std::string show_diff(T diff)
 {
     std::stringstream o;
     auto count = std::chrono::duration_cast<Unit>(diff).count();
-
-    o << count;
-
-    using namespace std;
-    namespace ch = std::chrono;
-    if      constexpr (is_same_v<Unit, ch::milliseconds>) o << "ms";
-    else if constexpr (is_same_v<Unit, ch::microseconds>) o << "us";
-    else if constexpr (is_same_v<Unit, ch::nanoseconds>)  o << "ns";
-    else
-        return "invalid unit type";
-
+    o << count << unit_str<Unit>();
     return o.str();
 }
 
