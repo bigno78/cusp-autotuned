@@ -18,13 +18,23 @@ namespace cusp::system::cuda::ktt {
 
 namespace coo {
 
+inline bool MORE_VALUES_PER_THREAD = false;
+
 inline void setup_tuning_parameters(const kernel_context& kernel)
 {
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
 
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", u64_vec{ 128, 256, 512 });
-    tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2 , 4, 8, 16, 32, 64, 500 });
+    if (MORE_VALUES_PER_THREAD)
+    {
+        tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 4, 8, 16, 32 });
+        tuner.AddParameter(kernel_id, "SHARED", u64_vec{ 0, 1 });
+    }
+    else
+    {
+        tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1 });
+    }
 
     tuner.AddThreadModifier(kernel.kernel_id,
             { kernel.definition_ids[0] },
@@ -113,17 +123,19 @@ auto get_launcher(const kernel_context& ctx,
         const auto& conf = interface.GetCurrentConfiguration();
         auto vals_per_thread = get_parameter_uint(conf, "VALUES_PER_THREAD");
 
-        ::ktt::DimensionVector block_size =
-            interface.GetCurrentLocalSize(ctx.definition_ids[0]);
-
         if (vals_per_thread == 500)
             vals_per_thread = 1;
 
-        ::ktt::DimensionVector grid_size(
-            DIVIDE_INTO(A.num_entries, vals_per_thread * block_size.GetSizeX()));
+        using DimVec = ::ktt::DimensionVector;
 
-        // ::ktt::DimensionVector grid_size(
-        //     DIVIDE_INTO(A.num_entries, block_size.GetSizeX()));
+        DimVec block_size = interface.GetCurrentLocalSize(ctx.definition_ids[0]);
+
+        // DimVec grid_size(DIVIDE_INTO(A.num_entries, block_size.GetSizeX()));
+        auto block_count = DIVIDE_INTO(A.num_entries, vals_per_thread * block_size.GetSizeX());
+        DimVec grid_size(block_count);
+
+        // TODO: measure fill time
+        thrust::fill(y.begin(), y.end(), 0);
 
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
