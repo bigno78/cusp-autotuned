@@ -1,6 +1,29 @@
 
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
+__global__
+void zero_output(const Idx* __restrict__ row_indices,
+                 const Idx* __restrict__ col_indices,
+                 const Val1* __restrict__ values,
+                 const int num_entries,
+                 const Val2* __restrict__ x,
+                 Val3* __restrict__ y,
+                 const int y_size)
+{
+    // set output vector to all zeroes
+    const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    const unsigned space = BLOCK_SIZE * gridDim.x;
+    for (unsigned i = ti; i < y_size; i += space)
+        y[ i ] = 0.0f;
+
+    // const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    // if (ti < y_size)
+    //     y[ ti ] = 0.0f;
+}
+
+
+
+template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
 void naive_coo_kernel(const Idx* __restrict__ row_indices,
                       const Idx* __restrict__ col_indices,

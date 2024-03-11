@@ -28,7 +28,7 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", u64_vec{ 128, 256, 512 });
     if (MORE_VALUES_PER_THREAD)
     {
-        tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 4, 8, 16, 32 });
+        tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 4, 8, 500 });
         tuner.AddParameter(kernel_id, "SHARED", u64_vec{ 0, 1 });
     }
     else
@@ -38,6 +38,14 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
 
     tuner.AddThreadModifier(kernel.kernel_id,
             { kernel.definition_ids[0] },
+            ::ktt::ModifierType::Local,
+            ::ktt::ModifierDimension::X,
+            { std::string("BLOCK_SIZE") },
+            [](const uint64_t defaultSize, const u64_vec& parameters) {
+                return parameters[0];
+            });
+    tuner.AddThreadModifier(kernel.kernel_id,
+            { kernel.definition_ids[1] },
             ::ktt::ModifierType::Local,
             ::ktt::ModifierDimension::X,
             { std::string("BLOCK_SIZE") },
@@ -55,15 +63,34 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner)
     const ::ktt::DimensionVector blockDimensions(0);
     const ::ktt::DimensionVector gridDimensions(0);
 
-    auto definition_id = tuner.AddKernelDefinitionFromFile(
+    // auto definition_id = tuner.AddKernelDefinitionFromFile(
+    //     "coo_spmv",
+    //     KernelsPath + "coo_kernel.h",
+    //     gridDimensions,
+    //     blockDimensions,
+    //     names_of_types<Idx, Val1, Val2, Val3>()
+    // );
+    // kernel.definition_ids.push_back(definition_id);
+    // kernel.kernel_id = tuner.CreateSimpleKernel("CooKernel", definition_id);
+
+    auto def_zero = tuner.AddKernelDefinitionFromFile(
+        "zero_output",
+        KernelsPath + "coo_kernel.h",
+        gridDimensions,
+        blockDimensions,
+        names_of_types<Idx, Val1, Val2, Val3>()
+    );
+    auto def_spmv = tuner.AddKernelDefinitionFromFile(
         "coo_spmv",
         KernelsPath + "coo_kernel.h",
         gridDimensions,
         blockDimensions,
         names_of_types<Idx, Val1, Val2, Val3>()
     );
-    kernel.definition_ids.push_back(definition_id);
-    kernel.kernel_id = tuner.CreateSimpleKernel("CooKernel", definition_id);
+    kernel.definition_ids.push_back(def_zero);
+    kernel.definition_ids.push_back(def_spmv);
+    kernel.kernel_id = tuner.CreateCompositeKernel("CooKernel",
+                                                   { def_zero, def_spmv });
 
     coo::setup_tuning_parameters(kernel);
 
@@ -98,6 +125,7 @@ auto add_arguments(const kernel_context& kernel,
                       A.values.size(), x, y, y.size());
 
     kernel.tuner->SetArguments(kernel.definition_ids[0], args);
+    kernel.tuner->SetArguments(kernel.definition_ids[1], args);
 
     return args;
 }
@@ -129,18 +157,21 @@ auto get_launcher(const kernel_context& ctx,
         using DimVec = ::ktt::DimensionVector;
 
         DimVec block_size = interface.GetCurrentLocalSize(ctx.definition_ids[0]);
-
-        // DimVec grid_size(DIVIDE_INTO(A.num_entries, block_size.GetSizeX()));
         auto block_count = DIVIDE_INTO(A.num_entries, vals_per_thread * block_size.GetSizeX());
         DimVec grid_size(block_count);
+
+        DimVec zero_grid_size(DIVIDE_INTO(A.num_entries, block_size.GetSizeX()));
 
         // TODO: measure fill time
         thrust::fill(y.begin(), y.end(), 0);
 
         if (!profile) {
-            interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
+            interface.RunKernel(ctx.definition_ids[0], zero_grid_size, block_size);
+            interface.RunKernel(ctx.definition_ids[1], grid_size, block_size);
         } else {
             interface.RunKernelWithProfiling(ctx.definition_ids[0],
+                                             zero_grid_size, block_size);
+            interface.RunKernelWithProfiling(ctx.definition_ids[1],
                                              grid_size, block_size);
         }
     };
