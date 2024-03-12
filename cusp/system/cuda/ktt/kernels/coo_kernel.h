@@ -41,16 +41,6 @@ void naive_coo_kernel(const Idx* __restrict__ row_indices,
         auto* ptr = &y[row_indices[n]];
         atomicAdd(ptr, value);
     }
-
-    // const int idx = blockDim.x * blockIdx.x + threadIdx.x;
-    // if (idx == 0)
-    // {
-    //     printf("... SLOW naive_coo_kernel ...\n");
-    //     for (Idx n = 0; n < num_entries; n++)
-    //     {
-    //         y[row_indices[n]] += values[n] * x[col_indices[n]];
-    //     }
-    // }
 }
 
 
@@ -87,49 +77,48 @@ void naive_multi(const Idx* __restrict__ row_indices,
                  Val3* __restrict__ y,
                  const int y_size)
 {
-//     const unsigned idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-//     const int begin = idx * VALUES_PER_THREAD;
-//     const int end = min(num_entries, begin + VALUES_PER_THREAD);
-// // if (idx == 0) printf("... naive_multi ...\n");
-//     // no work left for this thread
-//     if (begin >= end)
-//         return;
-//     float value = 0;
-//     Idx row = row_indices[ begin ];
-//     // bool first = true;
-//     for (int i = begin; i < end; ++i)
-//     {
-//         Idx cur = row_indices[ i ];
-//         if (row != cur)
-//         {
-//             // if (first)
-//                 atomicAdd(&y[ row ], value);
-//             // else
-//             //     y[ row ] = value;
-//             value = 0;
-//             // first = false;
-//         }
-//         value += values[ i ] * x[ col_indices[ i ] ];
-//         row = cur;
-//     }
-//     auto* ptr = &y[ row ];
-//     atomicAdd(ptr, value);
-
-const unsigned idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    const unsigned idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     const int begin = idx * VALUES_PER_THREAD;
     const int end = min(num_entries, begin + VALUES_PER_THREAD);
 
+    // if (idx == 0) printf("... naive_multi ...\n");
+
+    // no work left for this thread
     if (begin >= end)
         return;
 
+    float value = 0;
+    Idx row = row_indices[ begin ];
+    // bool first = true;
     for (int i = begin; i < end; ++i)
     {
-        Idx row = row_indices[ i ];
-
-        Val1 value = values[ i ] * x[ col_indices[ i ] ];
-
-        atomicAdd(&( y[ row ] ), value);
+        Idx cur = row_indices[ i ];
+        if (row != cur)
+        {
+            // if (first)
+                atomicAdd(&y[ row ], value);
+            // else
+            //     y[ row ] = value;
+            value = 0;
+            // first = false;
+        }
+        value += values[ i ] * x[ col_indices[ i ] ];
+        row = cur;
     }
+    auto* ptr = &y[ row ];
+    atomicAdd(ptr, value);
+
+    // const unsigned idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    // const int begin = idx * VALUES_PER_THREAD;
+    // const int end = min(num_entries, begin + VALUES_PER_THREAD);
+    // if (begin >= end)
+    //     return;
+    // for (int i = begin; i < end; ++i)
+    // {
+    //     Idx row = row_indices[ i ];
+    //     Val1 value = values[ i ] * x[ col_indices[ i ] ];
+    //     atomicAdd(&( y[ row ] ), value);
+    // }
 }
 
 
@@ -210,35 +199,6 @@ void coo_kernel(const Idx* __restrict__ row_indices,
                 Val3* __restrict__ y,
                 const int y_size)
 {
-    // if (BLOCK_SIZE * blockIdx.x + threadIdx.x == 0)
-    //     printf("... ktt coo_kernel ...\n");
-
-    // const int idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    // if (idx == 0)
-    // {
-    //     for (Idx n = 0; n < num_entries; n++)
-    //     {
-    //         y[row_indices[n]] += values[n] * x[col_indices[n]];
-    //     }
-    // }
-
-    // A)
-    // set output vector to all zeroes
-    // const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    // const unsigned space = BLOCK_SIZE * gridDim.x;
-    // for (unsigned i = ti; i < y_size; i += space)
-    //     y[ i ] = 0.0f;
-
-    // if (ti == 0) printf("... zeroed ...\n");
-
-    // // B)
-    // if (ti == 0)
-    //     for (unsigned i = 0; i < y_size; ++i)
-    //         y[ i ] = 0.0f;
-
-    // // C)
-    // __threadfence();
-
 // #if IMPL == 0
 //     naive_coo_kernel(row_indices, col_indices, values, num_entries, x, y, y_size);
 // #elif IMPL == 1
