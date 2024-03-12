@@ -278,9 +278,11 @@ void shared_single(const Idx* __restrict__ row_indices,
 {
     const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     const unsigned idx_in_blk = threadIdx.x;
+
 // if (ti == 0) printf("... shared_single ...\n");
-    __shared__ Idx  sh_rows[ BLOCK_SIZE + 2 + 10 ];
-    __shared__ Val1 sh_vals[ BLOCK_SIZE + 2 + 10 ];
+
+    __shared__ Idx  sh_rows[ BLOCK_SIZE + 2 ];
+    __shared__ Val1 sh_vals[ BLOCK_SIZE + 2 ];
 
     if (ti < num_entries)
     {
@@ -304,37 +306,29 @@ void shared_single(const Idx* __restrict__ row_indices,
 
         if (prv_row != cur_row && cur_row != nxt_row)
         {
+            auto value = sh_vals[ idx_in_blk + 1 ];
+
             if (idx_in_blk == 0 || idx_in_blk == BLOCK_SIZE-1)
-            {
-                atomicAdd(&y[ cur_row ], sh_vals[ idx_in_blk + 1 ]);
-            }
+                atomicAdd( &( y[ cur_row ] ), value );
             else
-                y[ cur_row ] = sh_vals[ idx_in_blk + 1 ];
+                y[ cur_row ] = value;
         }
         else if (prv_row != cur_row && cur_row == nxt_row)
         {
-            double sum = 0;
+            Val1 sum = 0;
             int i = idx_in_blk + 1;
-            for (; sh_rows[ i ] == cur_row && i < BLOCK_SIZE; ++i)
+            for (; sh_rows[ i ] == cur_row && i < BLOCK_SIZE + 2; ++i)
             {
                 sum += sh_vals[ i ];
             }
 
-            if (i == BLOCK_SIZE - 1 || idx_in_blk == 0)
-            {
-                // atomic add
-                atomicAdd(&y[ cur_row ], sum);
-            }
+            if (idx_in_blk == 0 || i == BLOCK_SIZE + 1)
+                atomicAdd( &y[ cur_row ], sum );
             else
-            {
                 y[ cur_row ] = sum;
-            }
         }
     }
 }
-
-
-
 
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>

@@ -26,22 +26,24 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     auto kernel_id = kernel.kernel_id;
 
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", u64_vec{ 128, 256, 512 });
-    if (MORE_VALUES_PER_THREAD)
-    {
-        tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 4, 8, 500 });
-        tuner.AddParameter(kernel_id, "SHARED", u64_vec{ 0, 1 });
-    }
-    else
-    {
-        tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1 });
-    }
+
+    tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 4, 8, 500 });
+    tuner.AddParameter(kernel_id, "SHARED", u64_vec{ 0, 1 });
+
+    tuner.AddConstraint(kernel_id, { "VALUES_PER_THREAD", "SHARED" },
+        [](const std::vector<uint64_t>& vals)
+        {
+            if (vals[1] == 1)
+                return vals[0] == 1 || vals[0] == 500;
+            return true;
+        });
 
     tuner.AddThreadModifier(kernel.kernel_id,
             { kernel.definition_ids[0] },
             ::ktt::ModifierType::Local,
             ::ktt::ModifierDimension::X,
             { std::string("BLOCK_SIZE") },
-            [](const uint64_t defaultSize, const u64_vec& parameters) {
+            [](const uint64_t default_size, const u64_vec& parameters) {
                 return parameters[0];
             });
     tuner.AddThreadModifier(kernel.kernel_id,
@@ -49,7 +51,7 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
             ::ktt::ModifierType::Local,
             ::ktt::ModifierDimension::X,
             { std::string("BLOCK_SIZE") },
-            [](const uint64_t defaultSize, const u64_vec& parameters) {
+            [](const uint64_t default_size, const u64_vec& parameters) {
                 return parameters[0];
             });
 }
