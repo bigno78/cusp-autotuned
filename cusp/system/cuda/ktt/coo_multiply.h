@@ -27,16 +27,16 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
 
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", u64_vec{ 128, 256, 512 });
 
-    tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 4, 8, 500 });
+    tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 4, 8 });
     tuner.AddParameter(kernel_id, "SHARED", u64_vec{ 0, 1 });
 
-    tuner.AddConstraint(kernel_id, { "VALUES_PER_THREAD", "SHARED" },
-        [](const std::vector<uint64_t>& vals)
-        {
-            if (vals[1] == 1)
-                return vals[0] == 1 || vals[0] == 500;
-            return true;
-        });
+    // tuner.AddConstraint(kernel_id, { "VALUES_PER_THREAD", "SHARED" },
+    //     [](const std::vector<uint64_t>& vals)
+    //     {
+    //         if (vals[1] == 1)
+    //             return vals[0] != 1 && vals[0] != 500;
+    //         return true;
+    //     });
 
     tuner.AddThreadModifier(kernel.kernel_id,
             { kernel.definition_ids[0] },
