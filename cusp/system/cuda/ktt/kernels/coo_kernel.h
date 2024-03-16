@@ -267,17 +267,19 @@ void coo_kernel(const Idx* __restrict__ row_indices,
 
 
 #if VALUES_PER_THREAD == 1
-    #ifdef SHARED == 1
+    #if SHARED == 1
         shared_single(      row_indices, col_indices, values, num_entries, x, y, y_size     );
     #else
         naive_coo_kernel(   row_indices, col_indices, values, num_entries, x, y, y_size     );
     #endif
 #else
-    #ifdef SHARED == 1
+    #if SHARED == 1
         shared_multi(       row_indices, col_indices, values, num_entries, x, y, y_size    );
-    #else
+    #elif SHARED == 0
         // naive_multi(        row_indices, col_indices, values, num_entries, x, y, y_size    );
         naive_multi_direct( row_indices, col_indices, values, num_entries, x, y, y_size);
+    #else
+        naive_multi(        row_indices, col_indices, values, num_entries, x, y, y_size    );
     #endif
 #endif
 }
@@ -459,11 +461,19 @@ void shared_multi(const Idx* __restrict__ row_indices,
         //                   y,
         //                   y_size );
 
-        const int n = ti + end;
-        // if (n >= num_entries)
-        //     return;
-        Val1 value = values[ n ] * x[ col_indices[ n ] ];
-        atomicAdd( &( y[ row_indices[ n ] ] ), value );
+        naive_multi( row_indices + end,
+                          col_indices + end,
+                          values + end,
+                          num_entries - end,
+                          x,
+                          y,
+                          y_size );
+
+        // const int n = ti + end;
+        // // if (n >= num_entries)
+        // //     return;
+        // Val1 value = values[ n ] * x[ col_indices[ n ] ];
+        // atomicAdd( &( y[ row_indices[ n ] ] ), value );
     }
 }
 
