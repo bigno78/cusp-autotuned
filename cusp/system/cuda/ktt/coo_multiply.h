@@ -12,6 +12,7 @@
 #include <thrust/fill.h>
 
 #include <iostream>
+#include <utility>      // pair
 
 
 namespace cusp::system::cuda::ktt {
@@ -28,15 +29,14 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", u64_vec{ 128, 256, 512 });
 
     tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 4, 8 });
-    tuner.AddParameter(kernel_id, "SHARED", u64_vec{ 0, 1 });
+    tuner.AddParameter(kernel_id, "SHARED", u64_vec{ 0, 1, 2 });
 
-    // tuner.AddConstraint(kernel_id, { "VALUES_PER_THREAD", "SHARED" },
-    //     [](const std::vector<uint64_t>& vals)
-    //     {
-    //         if (vals[1] == 1)
-    //             return vals[0] != 1 && vals[0] != 500;
-    //         return true;
-    //     });
+    tuner.AddConstraint(kernel_id, { "VALUES_PER_THREAD", "SHARED" },
+        [](const std::vector<uint64_t>& vals)
+        {
+            if (vals[0] == 1 && vals[1] == 2) return false;
+            return true;
+        });
 
     tuner.AddThreadModifier(kernel.kernel_id,
             { kernel.definition_ids[0] },
@@ -100,6 +100,27 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner)
 }
 
 
+
+struct grid_config
+{
+    int block_count = 0;
+    int block_count_zeroing = 0;
+};
+
+inline grid_config get_grid_config(size_t input_size, int vals_per_thread, int block_size)
+{
+    if (vals_per_thread == 500)
+        vals_per_thread = 1;
+
+    grid_config result{};
+    result.block_count         = DIVIDE_INTO(input_size, vals_per_thread * block_size);
+    result.block_count_zeroing = DIVIDE_INTO(input_size, block_size);
+    return result;
+}
+
+
+
+
 } // namespace coo
 
 
@@ -161,20 +182,14 @@ auto get_launcher(const kernel_context& ctx,
         DimVec block_size = interface.GetCurrentLocalSize(ctx.definition_ids[0]);
         auto block_count = DIVIDE_INTO(A.num_entries, vals_per_thread * block_size.GetSizeX());
         DimVec grid_size(block_count);
-
         DimVec zero_grid_size(DIVIDE_INTO(A.num_entries, block_size.GetSizeX()));
-
-        // TODO: measure fill time
-        thrust::fill(y.begin(), y.end(), 0);
 
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], zero_grid_size, block_size);
             interface.RunKernel(ctx.definition_ids[1], grid_size, block_size);
         } else {
-            interface.RunKernelWithProfiling(ctx.definition_ids[0],
-                                             zero_grid_size, block_size);
-            interface.RunKernelWithProfiling(ctx.definition_ids[1],
-                                             grid_size, block_size);
+            interface.RunKernelWithProfiling(ctx.definition_ids[0], zero_grid_size, block_size);
+            interface.RunKernelWithProfiling(ctx.definition_ids[1], grid_size, block_size);
         }
     };
 }
