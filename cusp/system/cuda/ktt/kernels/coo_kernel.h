@@ -34,7 +34,6 @@ void naive_coo_kernel(const Idx* __restrict__ row_indices,
                       const int y_size)
 {
     const int n = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    // if (n == 0) printf("... naive_coo_kernel ...\n");
     if (n < num_entries)
     {
         Val1 value = values[n] * x[col_indices[n]];
@@ -81,44 +80,25 @@ void naive_multi(const Idx* __restrict__ row_indices,
     const int begin = idx * VALUES_PER_THREAD;
     const int end = min(num_entries, begin + VALUES_PER_THREAD);
 
-    // if (idx == 0) printf("... naive_multi ...\n");
-
     // no work left for this thread
     if (begin >= end)
         return;
 
     float value = 0;
     Idx row = row_indices[ begin ];
-    // bool first = true;
     for (int i = begin; i < end; ++i)
     {
         Idx cur = row_indices[ i ];
         if (row != cur)
         {
-            // if (first)
-                atomicAdd(&y[ row ], value);
-            // else
-            //     y[ row ] = value;
+            atomicAdd(&y[ row ], value);
             value = 0;
-            // first = false;
         }
         value += values[ i ] * x[ col_indices[ i ] ];
         row = cur;
     }
     auto* ptr = &y[ row ];
     atomicAdd(ptr, value);
-
-    // const unsigned idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    // const int begin = idx * VALUES_PER_THREAD;
-    // const int end = min(num_entries, begin + VALUES_PER_THREAD);
-    // if (begin >= end)
-    //     return;
-    // for (int i = begin; i < end; ++i)
-    // {
-    //     Idx row = row_indices[ i ];
-    //     Val1 value = values[ i ] * x[ col_indices[ i ] ];
-    //     atomicAdd(&( y[ row ] ), value);
-    // }
 }
 
 
@@ -178,7 +158,6 @@ void old_naive_multi_shared(const Idx* __restrict__ row_indices,
 {
     const unsigned idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     const unsigned idx_in_blk = threadIdx.x;
-// if (idx == 0) printf("... naive_multi_shared ...\n");
     const int begin = idx * VALUES_PER_THREAD;
     const int end = min(num_entries, begin + VALUES_PER_THREAD);
 
@@ -253,19 +232,6 @@ void coo_kernel(const Idx* __restrict__ row_indices,
                 Val3* __restrict__ y,
                 const int y_size)
 {
-// #if IMPL == 0
-//     naive_coo_kernel(row_indices, col_indices, values, num_entries, x, y, y_size);
-// #elif IMPL == 1
-//     shared_single(row_indices, col_indices, values, num_entries, x, y, y_size);
-// #elif IMPL == 2
-//     naive_multi_shared(row_indices, col_indices, values, num_entries, x, y, y_size);
-// #elif IMPL == 3
-//     naive_multi(row_indices, col_indices, values, num_entries, x, y, y_size);
-// #else
-//     serial_coo_kernel(row_indices, col_indices, values, num_entries, x, y, y_size);
-// #endif
-
-
 #if VALUES_PER_THREAD == 1
     #if SHARED == 1
         shared_single(      row_indices, col_indices, values, num_entries, x, y, y_size     );
@@ -297,8 +263,6 @@ void shared_single(const Idx* __restrict__ row_indices,
 {
     const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     const unsigned idx_in_blk = threadIdx.x;
-
-    // if (ti == 0) printf("... shared_single ...\n");
 
     __shared__ Idx  sh_rows[ BLOCK_SIZE + 2 ];
     __shared__ Val1 sh_vals[ BLOCK_SIZE + 2 ];
