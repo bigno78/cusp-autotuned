@@ -2,6 +2,7 @@
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __global__
+__launch_bounds__(BLOCK_SIZE, 1)
 void zero_output(const Idx* __restrict__ row_indices,
                  const Idx* __restrict__ col_indices,
                  const Val1* __restrict__ values,
@@ -528,6 +529,7 @@ void shared_multi(const Idx* __restrict__ row_indices,
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __global__
+__launch_bounds__(BLOCK_SIZE, 1)
 void coo_spmv(const Idx* __restrict__ row_indices,
                const Idx* __restrict__ col_indices,
                const Val1* __restrict__ values,
