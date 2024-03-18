@@ -350,7 +350,7 @@ void shared_multi(const Idx* __restrict__ row_indices,
 
     // TODO: solve the remaining elements
     // TODO: probably should be <=
-    if ( ( blockIdx.x + 1 ) * BLOCK_SIZE * VALUES_PER_THREAD < num_entries )
+    if ( ( blockIdx.x + 1 ) * BLOCK_SIZE * VALUES_PER_THREAD <= num_entries )
     {
         for (int i = 0; i < VALUES_PER_THREAD; ++i)
         {
