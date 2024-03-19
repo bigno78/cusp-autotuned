@@ -130,6 +130,7 @@ void naive_multi_direct(const Idx* __restrict__ row_indices,
         Idx cur = row_indices[ i ];
         if (row != cur)
         {
+            // TODO: s/first/i == begin/
             if (first)
                 atomicAdd(&y[ row ], value);
             else
@@ -366,39 +367,53 @@ void shared_multi(const Idx* __restrict__ row_indices,
 
         __syncthreads();
 
-        const unsigned end = BLOCK_SIZE * VALUES_PER_THREAD - 1;
+        unsigned begin = idx_in_blk * VALUES_PER_THREAD;
 
-        for (int j = 0; j < VALUES_PER_THREAD; ++j)
+        auto row = sh_rows[ begin ];
+        Val1 value = 0;
+        for (int i = 0; i < VALUES_PER_THREAD; ++i)
         {
-            const unsigned idx = idx_in_blk * VALUES_PER_THREAD + j;
-            Idx cur_row = sh_rows[ idx ];
-            Idx prv_row = idx == 0   ? -1 : sh_rows[ idx-1 ];
-            Idx nxt_row = idx == end ? -1 : sh_rows[ idx+1 ];
-
-            // atomicAdd( &( y[ cur_row ] ), sh_vals[ idx ] );
-
-            if (prv_row != cur_row && cur_row != nxt_row)
+            Idx cur = sh_rows[ begin + i ];
+            if (row != cur)
             {
-                auto value = sh_vals[ idx ];
-
-                if (idx == 0 || idx >= end)
-                    atomicAdd( &( y[ cur_row ] ), value );
-                else
-                    y[ cur_row ] = value;
+                if (i == 0) atomicAdd(&y[ row ], value);
+                else        y[ row ] = value;
+                value = 0;
             }
-            else if (prv_row != cur_row && cur_row == nxt_row)
-            {
-                Val1 sum = 0;
-                int i = idx;
-                for (; sh_rows[ i ] == cur_row && i < end + 1; ++i)
-                    sum += sh_vals[ i ];
-
-                if (idx_in_blk == 0 || i >= end)
-                    atomicAdd( &y[ cur_row ], sum );
-                else
-                    y[ cur_row ] = sum;
-            }
+            value += sh_vals[ begin + i ];
+            row = cur;
         }
+        atomicAdd(&y[ row ], value);
+
+        // const unsigned end = BLOCK_SIZE * VALUES_PER_THREAD - 1;
+
+        // for (int j = 0; j < VALUES_PER_THREAD; ++j)
+        // {
+        //     const unsigned idx = idx_in_blk * VALUES_PER_THREAD + j;
+        //     Idx cur_row = sh_rows[ idx ];
+        //     Idx prv_row = idx == 0   ? -1 : sh_rows[ idx-1 ];
+        //     Idx nxt_row = idx == end ? -1 : sh_rows[ idx+1 ];
+
+        //     if (prv_row != cur_row && cur_row != nxt_row)
+        //     {
+        //         auto value = sh_vals[ idx ];
+        //         if (idx == 0 || idx >= end)
+        //             atomicAdd( &( y[ cur_row ] ), value );
+        //         else
+        //             y[ cur_row ] = value;
+        //     }
+        //     else if (prv_row != cur_row && cur_row == nxt_row)
+        //     {
+        //         Val1 sum = 0;
+        //         int i = idx;
+        //         for (; sh_rows[ i ] == cur_row && i < end + 1; ++i)
+        //             sum += sh_vals[ i ];
+        //         if (idx_in_blk == 0 || i >= end)
+        //             atomicAdd( &y[ cur_row ], sum );
+        //         else
+        //             y[ cur_row ] = sum;
+        //     }
+        // }
     }
 
     // // const unsigned end = gridDim.x * BLOCK_SIZE * VALUES_PER_THREAD;
