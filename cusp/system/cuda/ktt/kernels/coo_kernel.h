@@ -130,7 +130,6 @@ void naive_multi_direct(const Idx* __restrict__ row_indices,
         Idx cur = row_indices[ i ];
         if (row != cur)
         {
-            // TODO: s/first/i == begin/
             if (first)
                 atomicAdd(&y[ row ], value);
             else
