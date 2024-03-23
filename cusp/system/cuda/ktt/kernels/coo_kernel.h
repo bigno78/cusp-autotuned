@@ -370,14 +370,16 @@ void shared_multi(const Idx* __restrict__ row_indices,
 
         auto row = sh_rows[ begin ];
         Val1 value = 0;
+        bool first = true;
         for (int i = 0; i < VALUES_PER_THREAD; ++i)
         {
             Idx cur = sh_rows[ begin + i ];
             if (row != cur)
             {
-                if (i == 0) atomicAdd(&y[ row ], value);
+                if (first) atomicAdd(&y[ row ], value);
                 else        y[ row ] = value;
                 value = 0;
+                first = false;
             }
             value += sh_vals[ begin + i ];
             row = cur;
