@@ -24,8 +24,10 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
 
-    tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 128 });
-    tuner.AddParameter(kernel_id, "THREADS_PER_VECTOR", std::vector<uint64_t>{ 32 });
+    tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 32 });
+    // tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 32 });
+    // tuner.AddParameter(kernel_id, "THREADS_PER_VECTOR", std::vector<uint64_t>{ 32 });
+    tuner.AddParameter(kernel_id, "THREADS_PER_VECTOR", std::vector<uint64_t>{ 1 });
 
     tuner.AddThreadModifier(
         kernel.kernel_id,
@@ -136,18 +138,17 @@ auto get_launcher(const kernel_context& ctx,
                   cusp::array1d<ValueType3, cusp::device_memory>& y,
                   bool profile = false)
 {
-    return [&, profile] (::ktt::ComputeInterface& interface)
+    return [&, profile](::ktt::ComputeInterface& interface)
     {
         auto conf = interface.GetCurrentConfiguration();
 
         ::ktt::DimensionVector block_size =
             interface.GetCurrentLocalSize(ctx.definition_ids[0]);
 
-        auto threads_per_vector = get_parameter_uint(conf, "THREADS_PER_VECTOR");
-        auto vectors_per_block = block_size.GetSizeX() / threads_per_vector;
+        // auto threads_per_vector = get_parameter_uint(conf, "THREADS_PER_VECTOR");
+        // auto vectors_per_block = block_size.GetSizeX() / threads_per_vector;
 
-        ::ktt::DimensionVector grid_size(
-            DIVIDE_INTO(A.num_rows, vectors_per_block));
+        ::ktt::DimensionVector grid_size(A.num_rows);
 
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
