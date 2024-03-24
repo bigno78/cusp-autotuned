@@ -343,25 +343,33 @@ void shared_multi(const Idx* __restrict__ row_indices,
 {
     const unsigned idx_in_blk = threadIdx.x;
     // s/threadIdx.x/idx_in_blk/
-    const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    // const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
 
     __shared__ Idx  sh_rows[ BLOCK_SIZE * VALUES_PER_THREAD ];
     __shared__ Val1 sh_vals[ BLOCK_SIZE * VALUES_PER_THREAD ];
 
     // TODO: solve the remaining elements
     // TODO: probably should be <=
-    if ( ( blockIdx.x + 1 ) * BLOCK_SIZE * VALUES_PER_THREAD <= num_entries )
-    {
+    // if ( ( blockIdx.x + 1 ) * BLOCK_SIZE * VALUES_PER_THREAD <= num_entries )
+    // {
         for (int i = 0; i < VALUES_PER_THREAD; ++i)
         {
             // const int idx = ti * VALUES_PER_THREAD + BLOCK_SIZE * i;
             const int idx = VALUES_PER_THREAD * BLOCK_SIZE * blockIdx.x
                           + idx_in_blk + BLOCK_SIZE * i;
 
-            auto row = row_indices[ idx ];
-            auto value = values[ idx ] * x[ col_indices[ idx ] ];
-            sh_rows[ idx_in_blk + i * BLOCK_SIZE ] = row;
-            sh_vals[ idx_in_blk + i * BLOCK_SIZE ] = value;
+            if (idx < num_entries)
+            {
+                auto row = row_indices[ idx ];
+                auto value = values[ idx ] * x[ col_indices[ idx ] ];
+                sh_rows[ idx_in_blk + i * BLOCK_SIZE ] = row;
+                sh_vals[ idx_in_blk + i * BLOCK_SIZE ] = value;
+            }
+            else
+            {
+                sh_rows[ idx_in_blk + i * BLOCK_SIZE ] = -1;
+                sh_vals[ idx_in_blk + i * BLOCK_SIZE ] = 0;
+            }
         }
 
         __syncthreads();
@@ -376,15 +384,18 @@ void shared_multi(const Idx* __restrict__ row_indices,
             Idx cur = sh_rows[ begin + i ];
             if (row != cur)
             {
-                if (first) atomicAdd(&y[ row ], value);
-                else        y[ row ] = value;
+                if (row != -1)
+                {
+                    if (first) atomicAdd(&y[ row ], value);
+                    else        y[ row ] = value;
+                }
                 value = 0;
                 first = false;
             }
             value += sh_vals[ begin + i ];
             row = cur;
         }
-        atomicAdd(&y[ row ], value);
+        if (row != -1) atomicAdd(&y[ row ], value);
 
         // const unsigned end = BLOCK_SIZE * VALUES_PER_THREAD - 1;
 
@@ -415,7 +426,7 @@ void shared_multi(const Idx* __restrict__ row_indices,
         //             y[ cur_row ] = sum;
         //     }
         // }
-    }
+    // }
 
     // // const unsigned end = gridDim.x * BLOCK_SIZE * VALUES_PER_THREAD;
     // unsigned end = 0;
@@ -426,36 +437,36 @@ void shared_multi(const Idx* __restrict__ row_indices,
     //     else
     //         break;
     // }
-    if (num_entries % (BLOCK_SIZE * VALUES_PER_THREAD) == 0)
-        return;
+    // if (num_entries % (BLOCK_SIZE * VALUES_PER_THREAD) == 0)
+    //     return;
 
-    auto times = num_entries / (BLOCK_SIZE * VALUES_PER_THREAD);
-    unsigned end = times * BLOCK_SIZE * VALUES_PER_THREAD;
+    // auto times = num_entries / (BLOCK_SIZE * VALUES_PER_THREAD);
+    // unsigned end = times * BLOCK_SIZE * VALUES_PER_THREAD;
 
-    if (ti < num_entries - end)
-    {
-        // naive_coo_kernel( row_indices + end,
-        //                   col_indices + end,
-        //                   values + end,
-        //                   num_entries - end,
-        //                   x,
-        //                   y,
-        //                   y_size );
+    // if (ti < num_entries - end)
+    // {
+    //     // naive_coo_kernel( row_indices + end,
+    //     //                   col_indices + end,
+    //     //                   values + end,
+    //     //                   num_entries - end,
+    //     //                   x,
+    //     //                   y,
+    //     //                   y_size );
 
-        naive_multi( row_indices + end,
-                          col_indices + end,
-                          values + end,
-                          num_entries - end,
-                          x,
-                          y,
-                          y_size );
+    //     naive_multi( row_indices + end,
+    //                       col_indices + end,
+    //                       values + end,
+    //                       num_entries - end,
+    //                       x,
+    //                       y,
+    //                       y_size );
 
-        // const int n = ti + end;
-        // // if (n >= num_entries)
-        // //     return;
-        // Val1 value = values[ n ] * x[ col_indices[ n ] ];
-        // atomicAdd( &( y[ row_indices[ n ] ] ), value );
-    }
+    //     // const int n = ti + end;
+    //     // // if (n >= num_entries)
+    //     // //     return;
+    //     // Val1 value = values[ n ] * x[ col_indices[ n ] ];
+    //     // atomicAdd( &( y[ row_indices[ n ] ] ), value );
+    // }
 }
 
 
