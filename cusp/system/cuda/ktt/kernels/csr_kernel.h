@@ -119,46 +119,42 @@ void csr_kernel(const unsigned int num_rows,
     const int blk_idx = blockIdx.x;
     // const int ti = BLOCK_SIZE * blockIdx.x + idx_in_blk;
 
-    __shared__ Val1 sh_sum;
+    // __shared__ Val1 sh_sum;
 
+    // if (idx_in_blk == 0)
+    //     sh_sum = 0;
+
+    if (blk_idx >= num_rows)
+        return;
+
+    // TODO: fetch using two threads like cusp does
+    Idx row_start = Ar[ blk_idx ];
+    Idx row_end   = Ar[ blk_idx + 1 ];
+
+    Val3 value = 0;
+
+    for (int i = row_start + idx_in_blk; i < row_end; i += BLOCK_SIZE)
+        value += Ax[ i ] * x[ Ac[ i ] ];
+
+    const unsigned mask = 0xffffffff;
+    value += __shfl_down_sync(mask, value, 16);
+    value += __shfl_down_sync(mask, value,  8);
+    value += __shfl_down_sync(mask, value,  4);
+    value += __shfl_down_sync(mask, value,  2);
+    value += __shfl_down_sync(mask, value,  1);
+
+    // TODO: later
+    // if (lane == 0)
+    //     sh_vals[ idx_in_blk ] = value;
+
+    // TODO: solve reduction for block size > 32
     if (idx_in_blk == 0)
-        sh_sum = 0;
-
-    if (blk_idx < num_rows)
     {
-        // TODO: fetch using two threads like cusp does
-        Idx row_start = Ar[ blk_idx ];
-        Idx row_end   = Ar[ blk_idx + 1 ];
-
-        Val3 value = 0;
-
-        for (int i = row_start; i < row_end; i += BLOCK_SIZE)
-        {
-            int global_idx = i + idx_in_blk;
-            if (global_idx < row_end)
-                value += Ax[ global_idx ] * x[ Ac[ global_idx ] ];
-        }
-
-        const unsigned mask = 0xffffffff;
-        value += __shfl_down_sync(mask, value, 16);
-        value += __shfl_down_sync(mask, value,  8);
-        value += __shfl_down_sync(mask, value,  4);
-        value += __shfl_down_sync(mask, value,  2);
-        value += __shfl_down_sync(mask, value,  1);
-
-        // TODO: later
-        // if (lane == 0)
-        //     sh_vals[ idx_in_blk ] = value;
-
-        // TODO: solve reduction for block size > 32
-        if (idx_in_blk == 0)
-        {
-            // Val1 sum_warps = 0;
-            // for (int j = 0; j < BLOCK_SIZE; j += WARP_SIZE)
-            //     sum_warps += sh_vals[ j ];
-            // sh_sum += sum_warps;
-            y[ blk_idx ] = value;
-        }
+        // Val1 sum_warps = 0;
+        // for (int j = 0; j < BLOCK_SIZE; j += WARP_SIZE)
+        //     sum_warps += sh_vals[ j ];
+        // sh_sum += sum_warps;
+        y[ blk_idx ] = value;
     }
 }
 
