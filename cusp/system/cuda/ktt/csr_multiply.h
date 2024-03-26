@@ -24,8 +24,8 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
 
+    // tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 32, 64, 128, 256, 512, 1024 });
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 32 });
-    // tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 32 });
     // tuner.AddParameter(kernel_id, "THREADS_PER_VECTOR", std::vector<uint64_t>{ 32 });
     tuner.AddParameter(kernel_id, "THREADS_PER_VECTOR", std::vector<uint64_t>{ 1 });
 
@@ -149,6 +149,7 @@ auto get_launcher(const kernel_context& ctx,
         // auto vectors_per_block = block_size.GetSizeX() / threads_per_vector;
 
         ::ktt::DimensionVector grid_size(A.num_rows);
+        // ::ktt::DimensionVector grid_size(DIVIDE_INTO(A.num_rows, block_size.GetSizeX()));
 
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
