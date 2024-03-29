@@ -24,10 +24,14 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
 
-    // tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 32, 64, 128, 256, 512, 1024 });
-    tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 32 });
-    // tuner.AddParameter(kernel_id, "THREADS_PER_VECTOR", std::vector<uint64_t>{ 32 });
-    tuner.AddParameter(kernel_id, "THREADS_PER_VECTOR", std::vector<uint64_t>{ 1 });
+    tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
+    // tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 1 });
+
+    tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 32, 64, 128, 256, 512 });
+    // tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 128 });
+
+    tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 1, 2, 4, 8, 16, 32 });
+    // tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 16 });
 
     tuner.AddThreadModifier(
         kernel.kernel_id,
@@ -145,11 +149,18 @@ auto get_launcher(const kernel_context& ctx,
         ::ktt::DimensionVector block_size =
             interface.GetCurrentLocalSize(ctx.definition_ids[0]);
 
-        // auto threads_per_vector = get_parameter_uint(conf, "THREADS_PER_VECTOR");
-        // auto vectors_per_block = block_size.GetSizeX() / threads_per_vector;
+        auto rows_per_block = get_parameter_uint(conf, "ROWS_PER_BLOCK");
+        auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
 
-        ::ktt::DimensionVector grid_size(A.num_rows);
-        // ::ktt::DimensionVector grid_size(DIVIDE_INTO(A.num_rows, block_size.GetSizeX()));
+        unsigned block_count = 0;
+
+        // constexpr int warp = 32;
+        if (threads_per_row <= 32)
+            block_count = DIVIDE_INTO( A.num_rows, rows_per_block * block_size.GetSizeX() / threads_per_row );
+        else
+            throw "aaaaa";
+
+        ::ktt::DimensionVector grid_size(block_count);
 
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
