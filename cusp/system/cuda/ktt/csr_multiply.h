@@ -24,13 +24,14 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
 
-    tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
-    // tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 1 });
+    // tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 1, 2, 4, 8 });
+    // tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
+    tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 1 });
 
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 32, 64, 128, 256, 512 });
     // tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 128 });
 
-    tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 1, 2, 4, 8, 16, 32 });
+    tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 0, 1, 2, 4, 8, 16, 32 });
     // tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 16 });
 
     tuner.AddThreadModifier(
@@ -154,11 +155,10 @@ auto get_launcher(const kernel_context& ctx,
 
         unsigned block_count = 0;
 
-        // constexpr int warp = 32;
-        if (threads_per_row <= 32)
-            block_count = DIVIDE_INTO( A.num_rows, rows_per_block * block_size.GetSizeX() / threads_per_row );
+        if (threads_per_row == 0)
+            block_count = DIVIDE_INTO( A.num_rows, rows_per_block );
         else
-            throw "aaaaa";
+            block_count = DIVIDE_INTO( A.num_rows, rows_per_block * block_size.GetSizeX() / threads_per_row );
 
         ::ktt::DimensionVector grid_size(block_count);
 
