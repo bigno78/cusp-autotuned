@@ -8,25 +8,22 @@ void csr_kernel_naive(const unsigned int num_rows,
                 const Val2*  x,
                 Val3*        y)
 {
-    // const int idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     int idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    const int total = BLOCK_SIZE * gridDim.x;
+    const int total_threads = BLOCK_SIZE * gridDim.x;
 
-    Val1 value = 0;
-    // if (idx < num_rows)
-    for (; idx < num_rows; idx += total)
+    Val1 sum = 0;
+    for (Idx row = idx; row < num_rows; row += total_threads)
     {
-        Idx row_start = Ar[idx];
-        Idx row_end = Ar[idx + 1];
+        sum = 0;
+        Idx row_start = Ar[row];
+        Idx row_end = Ar[row + 1];
         // TODO: s/int/Idx/
-        for (int i = row_start; i < row_end; ++i)
+        for (Idx i = row_start; i < row_end; ++i)
         {
-            // Val3 value = Ax[i] * x[Ac[i]];
-            // y[idx] += value;
             Val3 val = Ax[i] * x[Ac[i]];
-            value += val;
+            sum += val;
         }
-        y[idx] = value;
+        y[row] = sum;
     }
 }
 
