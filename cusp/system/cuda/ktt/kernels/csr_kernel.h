@@ -103,13 +103,30 @@ void csr_kernel_naive(const unsigned int num_rows,
 
 
 
-
 // Modulo operation assuming mod is a value of this form: mod = 2^exp.
 template<typename T>
 __device__
 inline T exp2mod(T v, T mod)
 {
     return v & (mod - 1);
+}
+
+
+// __device__ int row_counter = 0;
+__device__ int* row_counter;
+
+
+__device__
+int assign_row(const int lane, const unsigned int num_rows)
+{
+    int row = 0;
+    if (lane == 0)
+        row = atomicAdd(row_counter, 1);
+
+    constexpr unsigned mask = 0xffffffff;
+    int got = __shfl_sync(mask, row, 0);
+
+    return got >= num_rows ? -1 : got;
 }
 
 
@@ -132,7 +149,12 @@ void csr_kernel_warp(const unsigned int num_rows,
 
     __shared__ Idx sh_row_info[2];
 
+#if DYNAMIC == 1 && THREADS_PER_ROW == 32
+    int row;
+    while ( ( row = assign_row(lane, num_rows) ) != -1 )
+#else
     for (Idx row = ti / THREADS_PER_ROW; row < num_rows; row += vector_count)
+#endif
     {
 
     // TODO: fetch using two threads like cusp does
@@ -286,8 +308,13 @@ void csr_spmv(const unsigned int num_rows,
               const Idx*   Ac,
               const Val1*  Ax,
               const Val2*  x,
-              Val3*        y)
+              Val3*        y,
+              int* row_counter)
 {
+    ::row_counter = row_counter;
+    // const int ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    // if (ti == 0)
+    //     printf("................................ row_counter=%d\n", *row_counter);
     if constexpr (THREADS_PER_ROW == 0)
         csr_kernel_block<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
     else if constexpr (THREADS_PER_ROW == 1)

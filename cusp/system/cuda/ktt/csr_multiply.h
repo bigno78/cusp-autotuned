@@ -24,15 +24,26 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
 
-    // tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 1, 2, 4, 8 });
+    tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 1, 2, 4, 8, 16, 32, 64, 128 });
+    // tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 8 });
     // tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
-    tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 1 });
+    // tuner.AddParameter(kernel_id, "ROWS_PER_BLOCK", std::vector<uint64_t>{ 1 });
 
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 32, 64, 128, 256, 512 });
+    // tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 64 });
     // tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 128 });
 
     tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 0, 1, 2, 4, 8, 16, 32 });
-    // tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 16 });
+    // tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 32 });
+    tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 0, 1 });
+
+    tuner.AddConstraint(kernel_id, { "THREADS_PER_ROW", "DYNAMIC" },
+        [](const std::vector<uint64_t>& vals)
+        {
+            // return vals[1] != 1 || vals[0] == 32;
+            if (vals[1] == 1) return vals[0] == 32;
+            return true;
+        });
 
     tuner.AddThreadModifier(
         kernel.kernel_id,
@@ -40,11 +51,14 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
         ::ktt::ModifierType::Local,
         ::ktt::ModifierDimension::X,
         { std::string("BLOCK_SIZE") },
-        [] (const uint64_t defaultSize, const std::vector<uint64_t>& parameters) {
+        [](const uint64_t defaultSize, const std::vector<uint64_t>& parameters) {
             return parameters[0];
         }
     );
 }
+
+
+int* row_counter = nullptr;
 
 
 template<typename IndexType,
@@ -84,6 +98,13 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner)
 
     setup_tuning_parameters(kernel);
 
+    if (row_counter)
+        cudaFree(row_counter);
+
+    cudaMalloc(&row_counter, sizeof(int));
+    cudaMemset(row_counter, 0, sizeof(int));
+    printf("cudaMalloc, add_arguments\n");
+
     return kernel;
 }
 
@@ -115,7 +136,8 @@ add_arguments(const kernel_context& kernel,
 {
     auto args = add_arguments(*kernel.tuner,
                               A.num_rows, A.row_offsets, A.column_indices,
-                              A.values, x, y);
+                              A.values, x, y,
+                              csr::row_counter);
 
     kernel.tuner->SetArguments(kernel.definition_ids[0], args);
 
@@ -161,6 +183,8 @@ auto get_launcher(const kernel_context& ctx,
             block_count = DIVIDE_INTO( A.num_rows, rows_per_block * block_size.GetSizeX() / threads_per_row );
 
         ::ktt::DimensionVector grid_size(block_count);
+
+        cudaMemset(csr::row_counter, 0, sizeof(int));
 
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
