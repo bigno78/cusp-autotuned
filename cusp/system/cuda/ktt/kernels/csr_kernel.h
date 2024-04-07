@@ -1,4 +1,64 @@
 
+
+__device__ int* row_counter;
+
+
+__device__
+int assign_row(const int prev_row, const int worker_idx)
+{
+    const int lane = threadIdx.x % 32;
+
+    if (prev_row == -1)
+        return worker_idx;
+
+#if THREADS_PER_ROW == 32
+    int row = 0;
+    if (lane == 0) row = atomicAdd(row_counter, 1);
+
+    constexpr unsigned mask = 0xffffffff;
+    int got = __shfl_sync(mask, row, 0);
+    return got;
+
+#elif THREADS_PER_ROW == 1
+
+    int row = 0;
+    if (lane == 0) row = atomicAdd(row_counter, 32);
+
+    constexpr unsigned mask = 0xffffffff;
+    int got = lane + __shfl_sync(mask, row, 0);
+    return got;
+
+#elif THREADS_PER_ROW == 0
+
+    const int idx_in_blk = threadIdx.x;
+    __shared__ int sh_row;
+
+    if (idx_in_blk == 0) sh_row = atomicAdd(row_counter, 1);
+    __syncthreads();
+
+    return sh_row;
+
+    // int row;
+    // if (lane == 0) row = sh_row;
+    // constexpr unsigned mask = 0xffffffff;
+    // int got = __shfl_sync(mask, row, 0);
+    // return got;
+
+#else
+    int row = 0;
+    if (lane == 0) row = atomicAdd(row_counter, 32 / THREADS_PER_ROW);
+
+    constexpr unsigned mask = 0xffffffff;
+    int got = __shfl_sync(mask, row, 0);
+
+    return got + lane / THREADS_PER_ROW;
+
+#endif
+
+}
+
+
+
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
 void csr_kernel_naive(const unsigned int num_rows,
@@ -12,7 +72,12 @@ void csr_kernel_naive(const unsigned int num_rows,
     const int total_threads = BLOCK_SIZE * gridDim.x;
 
     Val1 sum = 0;
+#if DYNAMIC == 1
+    int row = -1;
+    while ( ( row = assign_row(row, idx) ) < num_rows )
+#else
     for (Idx row = idx; row < num_rows; row += total_threads)
+#endif
     {
         sum = 0;
         Idx row_start = Ar[row];
@@ -112,24 +177,6 @@ inline T exp2mod(T v, T mod)
 }
 
 
-// __device__ int row_counter = 0;
-__device__ int* row_counter;
-
-
-__device__
-int assign_row(const int lane, const unsigned int num_rows)
-{
-    int row = 0;
-    if (lane == 0)
-        row = atomicAdd(row_counter, 1);
-
-    constexpr unsigned mask = 0xffffffff;
-    int got = __shfl_sync(mask, row, 0);
-
-    return got >= num_rows ? -1 : got;
-}
-
-
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
 void csr_kernel_warp(const unsigned int num_rows,
@@ -149,9 +196,9 @@ void csr_kernel_warp(const unsigned int num_rows,
 
     __shared__ Idx sh_row_info[2];
 
-#if DYNAMIC == 1 && THREADS_PER_ROW == 32
-    int row;
-    while ( ( row = assign_row(lane, num_rows) ) != -1 )
+#if DYNAMIC == 1
+    int row = -1;
+    while ( ( row = assign_row(row, ti / THREADS_PER_ROW) ) < num_rows )
 #else
     for (Idx row = ti / THREADS_PER_ROW; row < num_rows; row += vector_count)
 #endif
@@ -238,8 +285,15 @@ void csr_kernel_block(const unsigned int num_rows,
 
     // TODO: better fetching of row info
     // for (int row = blk_idx * ROWS_PER_BLOCK; row < blk_idx * ROWS_PER_BLOCK + ROWS_PER_BLOCK; ++row)
+
     int begin = blk_idx;
+
+#if DYNAMIC == 1
+    int row = -1;
+    while ( ( row = assign_row(row, begin) ) < num_rows )
+#else
     for (unsigned row = begin; row < num_rows; row += BLOCK_COUNT)
+#endif
     {
     // if (lane == 0)
     //     sh_sums[ warp_in_block ] = 0;
