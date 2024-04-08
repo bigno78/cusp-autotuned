@@ -72,7 +72,7 @@ void csr_kernel_naive(const unsigned int num_rows,
     const int total_threads = BLOCK_SIZE * gridDim.x;
 
     Val1 sum = 0;
-#if DYNAMIC == 1
+#if DYNAMIC != 0
     int row = -1;
     while ( ( row = assign_row(row, idx) ) < num_rows )
 #else
@@ -196,7 +196,7 @@ void csr_kernel_warp(const unsigned int num_rows,
 
     __shared__ Idx sh_row_info[2];
 
-#if DYNAMIC == 1
+#if DYNAMIC != 0
     int row = -1;
     while ( ( row = assign_row(row, ti / THREADS_PER_ROW) ) < num_rows )
 #else
@@ -288,7 +288,7 @@ void csr_kernel_block(const unsigned int num_rows,
 
     int begin = blk_idx;
 
-#if DYNAMIC == 1
+#if DYNAMIC != 0
     int row = -1;
     while ( ( row = assign_row(row, begin) ) < num_rows )
 #else

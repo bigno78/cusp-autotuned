@@ -37,7 +37,7 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
 
     tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 0, 1, 2, 4, 8, 16, 32 });
     // tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 32 });
-    tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 1 });
+    tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 0, 1 });
 
     // tuner.AddConstraint(kernel_id, { "THREADS_PER_ROW", "DYNAMIC" },
     //     [](const std::vector<uint64_t>& vals)
