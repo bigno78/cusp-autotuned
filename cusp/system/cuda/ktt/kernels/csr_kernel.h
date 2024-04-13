@@ -15,7 +15,6 @@ inline auto mod2exp(T v, S mod)
 __device__
 int assign_row(const int prev_row, const int worker_idx)
 {
-    // const int lane = threadIdx.x % 32;
     const int lane = mod2exp(threadIdx.x, 32);
 
     if (prev_row == -1)
@@ -47,12 +46,6 @@ int assign_row(const int prev_row, const int worker_idx)
     __syncthreads();
 
     return sh_row;
-
-    // int row;
-    // if (lane == 0) row = sh_row;
-    // constexpr unsigned mask = 0xffffffff;
-    // int got = __shfl_sync(mask, row, 0);
-    // return got;
 
 #else
     int row = 0;
@@ -124,7 +117,6 @@ void csr_kernel_warp(const unsigned int num_rows,
                 Val3*        y)
 {
     const int ti         = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    // const int lane       = threadIdx.x % THREADS_PER_ROW;
     const int lane       = mod2exp(threadIdx.x, THREADS_PER_ROW);
     const int idx_in_blk = threadIdx.x;
     const int blk_idx    = blockIdx.x;
@@ -210,7 +202,6 @@ void csr_kernel_block(const unsigned int num_rows,
 {
     const int WARP_SIZE = 32;
 
-    // const int lane = threadIdx.x % WARP_SIZE;
     const int lane = mod2exp(threadIdx.x, WARP_SIZE);
     const int blk_idx = blockIdx.x;
     const int idx_in_blk = threadIdx.x;
@@ -310,9 +301,7 @@ void csr_spmv(const unsigned int num_rows,
               int* row_counter)
 {
     ::row_counter = row_counter;
-    // const int ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    // if (ti == 0)
-    //     printf("................................ row_counter=%d\n", *row_counter);
+
     if constexpr (THREADS_PER_ROW == 0)
         csr_kernel_block<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
     else if constexpr (THREADS_PER_ROW == 1)
