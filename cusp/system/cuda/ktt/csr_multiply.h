@@ -230,7 +230,7 @@ auto get_launcher(const kernel_context& ctx,
         {
             struct fake_mat
             {
-                int num_entries = 0;
+                unsigned long num_entries = 0;
                 cusp::array1d<IndexType, cusp::host_memory> row_offsets;
             };
 

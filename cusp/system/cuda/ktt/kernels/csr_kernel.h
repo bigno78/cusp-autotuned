@@ -323,12 +323,14 @@ void csr_kernel_balanced(const unsigned int num_rows,
     const int worker_chunk = divide_into(num_entries, worker_count);
 
     const int begin =  worker_idx      * worker_chunk;
-    const int end   = (worker_idx + 1) * worker_chunk;
+    const int end   = min( (worker_idx + 1) * worker_chunk, num_entries );
+
+    // if (end > num_entries) end = num_entries;
 
     int row_begin = 0;
-    for (int row = row_starts[ worker_idx ]; row < num_rows && ( row_begin = Ar[ row ] ) < end; ++row)
+    for (int row = row_starts[ worker_idx ]; ( row_begin = Ar[ row ] ) < end; ++row)
     {
-        int row_end   = Ar[ row + 1 ];
+        const int row_end   = Ar[ row + 1 ];
         if (row_begin < begin) row_begin = begin;
 
         Val1 value = 0;
