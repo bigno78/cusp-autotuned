@@ -3,10 +3,20 @@
 __device__ int* row_counter;
 
 
+// Modulo operation assuming mod is a value of this form: mod = 2^exp.
+template<typename T, typename S>
+__device__
+inline auto mod2exp(T v, S mod)
+{
+    return v & (mod - 1);
+}
+
+
 __device__
 int assign_row(const int prev_row, const int worker_idx)
 {
-    const int lane = threadIdx.x % 32;
+    // const int lane = threadIdx.x % 32;
+    const int lane = mod2exp(threadIdx.x, 32);
 
     if (prev_row == -1)
         return worker_idx;
@@ -70,6 +80,9 @@ void csr_kernel_naive(const unsigned int num_rows,
 {
     int idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     const int total_threads = BLOCK_SIZE * gridDim.x;
+    const Idx idx_in_blk = threadIdx.x;
+
+    // __shared__ Idx sh_row_info[ BLOCK_SIZE + 1 + 40 ];
 
     Val1 sum = 0;
 #if DYNAMIC != 0
@@ -83,6 +96,13 @@ void csr_kernel_naive(const unsigned int num_rows,
         // TODO: read this coalesed with the whole block, might be faster
         Idx row_start = Ar[row];
         Idx row_end = Ar[row + 1];
+        // constexpr int SHIFT = 17;
+        // sh_row_info[ idx_in_blk + idx_in_blk / SHIFT ] = Ar[ row ];
+        // if (idx_in_blk == BLOCK_SIZE - 1)
+        //     sh_row_info[ BLOCK_SIZE + BLOCK_SIZE / SHIFT ] = Ar[ row + 1 ];
+        // __syncthreads();
+        // Idx row_start = sh_row_info[ idx_in_blk + idx_in_blk / SHIFT ];
+        // Idx row_end   = sh_row_info[ (idx_in_blk + 1) + ((idx_in_blk + 1) / SHIFT) ];
 
         for (Idx i = row_start; i < row_end; ++i)
         {
@@ -91,15 +111,6 @@ void csr_kernel_naive(const unsigned int num_rows,
         }
         y[row] = sum;
     }
-}
-
-
-// Modulo operation assuming mod is a value of this form: mod = 2^exp.
-template<typename T>
-__device__
-inline T exp2mod(T v, T mod)
-{
-    return v & (mod - 1);
 }
 
 
@@ -112,15 +123,18 @@ void csr_kernel_warp(const unsigned int num_rows,
                 const Val2*  x,
                 Val3*        y)
 {
-    const int ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    const int lane = threadIdx.x % THREADS_PER_ROW;
+    const int ti         = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    // const int lane       = threadIdx.x % THREADS_PER_ROW;
+    const int lane       = mod2exp(threadIdx.x, THREADS_PER_ROW);
     const int idx_in_blk = threadIdx.x;
-    const int blk_idx = blockIdx.x;
+    const int blk_idx    = blockIdx.x;
+    const int worker_idx = threadIdx.x / THREADS_PER_ROW;
 
     const int vectors_per_block = BLOCK_SIZE / THREADS_PER_ROW;
     const int vector_count = gridDim.x * vectors_per_block;
 
-    __shared__ Idx sh_row_info[2];
+    // __shared__ Idx sh_row_info[2];
+    __shared__ Idx sh_row_info[vectors_per_block][2];
 
 #if DYNAMIC != 0
     int row = -1;
@@ -131,20 +145,22 @@ void csr_kernel_warp(const unsigned int num_rows,
     {
 
     // TODO: fetch using two threads like cusp does
-    Idx row_start = Ar[ row ];
-    Idx row_end   = Ar[ row + 1 ];
-    // if (idx_in_blk < 2)
-    //     sh_row_info[ idx_in_blk ] = Ar[ row + idx_in_blk ];
-    // __syncthreads();
-    // Idx row_start = sh_row_info[ 0 ];
-    // Idx row_end   = sh_row_info[ 1 ];
+    // Idx row_start = Ar[ row ];
+    // Idx row_end   = Ar[ row + 1 ];
+
+    // TODO: This.
+    if (lane < 2)
+        sh_row_info[ worker_idx ][ lane ] = Ar[ row + lane ];
+    __syncthreads();
+    Idx row_start = sh_row_info[ worker_idx ][ 0 ];
+    Idx row_end   = sh_row_info[ worker_idx ][ 1 ];
 
 
     Val3 value = 0;
 
     if (THREADS_PER_ROW == 32 && row_end - row_start > 32)
     {
-        Idx aligned_start = row_start - exp2mod(row_start, 32) + lane;
+        Idx aligned_start = row_start - mod2exp(row_start, 32) + lane;
 
         if (int i = aligned_start; i >= row_start && i < row_end)
             value += Ax[ i ] * x[ Ac[ i ] ];
@@ -194,7 +210,8 @@ void csr_kernel_block(const unsigned int num_rows,
 {
     const int WARP_SIZE = 32;
 
-    const int lane = threadIdx.x % WARP_SIZE;
+    // const int lane = threadIdx.x % WARP_SIZE;
+    const int lane = mod2exp(threadIdx.x, WARP_SIZE);
     const int blk_idx = blockIdx.x;
     const int idx_in_blk = threadIdx.x;
     const int warp_in_block = idx_in_blk / WARP_SIZE;
@@ -226,14 +243,15 @@ void csr_kernel_block(const unsigned int num_rows,
 
 
     // TODO: fetch using two threads like cusp does
-    Idx row_start = Ar[ row ];
-    Idx row_end = Ar[ row + 1 ];
+    // Idx row_start = Ar[ row ];
+    // Idx row_end = Ar[ row + 1 ];
 
-    // if (idx_in_blk < 2)
-    //     sh_row_info[ idx_in_blk ] = Ar[ row + idx_in_blk ];
-    // __syncthreads();
-    // const Idx row_start = sh_row_info[ 0 ];
-    // const Idx row_end   = sh_row_info[ 1 ];
+    // TODO: check if this correct and faster
+    if (idx_in_blk < 2)
+        sh_row_info[ idx_in_blk ] = Ar[ row + idx_in_blk ];
+    __syncthreads();
+    const Idx row_start = sh_row_info[ 0 ];
+    const Idx row_end   = sh_row_info[ 1 ];
 
 
     Val3 value = 0;
