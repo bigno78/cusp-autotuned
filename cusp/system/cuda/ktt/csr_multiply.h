@@ -19,25 +19,56 @@ namespace cusp::system::cuda::ktt {
 namespace csr {
 
 
+// inline int* row_starts = nullptr;
+inline cusp::array1d<int, cusp::device_memory> row_starts;
+
+
+inline int* row_counter = nullptr;
+
+
+template<typename Mat, typename Vec>
+inline void cpu_compute_row_starts(const Mat& A, Vec& out, int workers)
+{
+    int count = 0;
+    int w = 0;
+
+    int total = A.num_entries;
+    int chunk = DIVIDE_INTO(total, workers);
+
+    for (int i = 0; i < A.row_offsets.size() - 1; ++i)
+    {
+        int next = A.row_offsets[ i + 1 ];
+
+        while (count <= w * chunk && w * chunk < next)
+        {
+            out[w] = i;
+            ++w;
+        }
+
+        count = next;
+    }
+    // TODO: isn't there a corner case when not all workers have been assigned?
+}
+
+
 inline void setup_tuning_parameters(const kernel_context& kernel)
 {
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
 
     // tuner.AddParameter(kernel_id, "ROWS_PER_WORKER", std::vector<uint64_t>{ 1, 2, 4, 8, 16, 32, 64, 128 });
-    tuner.AddParameter(kernel_id, "ROWS_PER_WORKER", std::vector<uint64_t>{ 64, 128, 10'000, 100'000 });
-    // tuner.AddParameter(kernel_id, "ROWS_PER_WORKER", std::vector<uint64_t>{ 1, 10, 100, 1000, 10000 });
-    // tuner.AddParameter(kernel_id, "ROWS_PER_WORKER", std::vector<uint64_t>{ 8 });
-    // tuner.AddParameter(kernel_id, "ROWS_PER_WORKER", std::vector<uint64_t>{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
-    // tuner.AddParameter(kernel_id, "ROWS_PER_WORKER", std::vector<uint64_t>{ 1 });
+    // tuner.AddParameter(kernel_id, "ROWS_PER_WORKER", std::vector<uint64_t>{ 1, 4, 64, 128, 10'000, 100'000 });
 
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 32, 64, 128, 256, 512 });
-    // tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 64 });
-    // tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 128 });
+
+    auto dev_info = tuner.GetCurrentDeviceInfo();
+    auto u = dev_info.GetMaxComputeUnits();
+    tuner.AddParameter(kernel_id, "NUMBER_OF_BLOCKS", std::vector<uint64_t>{ u / 2, u, u * 2, u * 4, u * 8, u * 16 });
 
     tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 0, 1, 2, 4, 8, 16, 32 });
-    // tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 32 });
-    tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 0, 1 });
+
+    // tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 0, 1 });
+    tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 2 });
 
     // tuner.AddConstraint(kernel_id, { "THREADS_PER_ROW", "DYNAMIC" },
     //     [](const std::vector<uint64_t>& vals)
@@ -47,6 +78,13 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     //                               || vals[0] == 0;
     //         return true;
     //     });
+
+    unsigned max_workers = (u * 16) * 512;
+    row_starts = decltype(row_starts){ max_workers };
+
+    // if (row_starts) cudaFree(row_starts);
+    // cudaMalloc(&row_starts,   max_workers * sizeof(int));
+    // cudaMemset(row_starts, 0, max_workers * sizeof(int));
 
     tuner.AddThreadModifier(
         kernel.kernel_id,
@@ -59,9 +97,6 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
         }
     );
 }
-
-
-int* row_counter = nullptr;
 
 
 template<typename IndexType,
@@ -139,7 +174,9 @@ add_arguments(const kernel_context& kernel,
     auto args = add_arguments(*kernel.tuner,
                               A.num_rows, A.row_offsets, A.column_indices,
                               A.values, x, y,
-                              csr::row_counter);
+                              A.num_entries,
+                              csr::row_counter,
+                              csr::row_starts);
 
     kernel.tuner->SetArguments(kernel.definition_ids[0], args);
 
@@ -174,17 +211,45 @@ auto get_launcher(const kernel_context& ctx,
         ::ktt::DimensionVector block_size =
             interface.GetCurrentLocalSize(ctx.definition_ids[0]);
 
-        auto rows_per_worker = get_parameter_uint(conf, "ROWS_PER_WORKER");
-        auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
+        // auto rows_per_worker = get_parameter_uint(conf, "ROWS_PER_WORKER");
+        // auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
 
-        unsigned block_count = 0;
+        // unsigned block_count = 0;
 
-        if (threads_per_row == 0)
-            block_count = DIVIDE_INTO( A.num_rows, rows_per_worker );
-        else
-            block_count = DIVIDE_INTO( A.num_rows, rows_per_worker * block_size.GetSizeX() / threads_per_row );
+        // if (threads_per_row == 0)
+        //     block_count = DIVIDE_INTO( A.num_rows, rows_per_worker );
+        // else
+        //     block_count = DIVIDE_INTO( A.num_rows, rows_per_worker * block_size.GetSizeX() / threads_per_row );
 
+        // ::ktt::DimensionVector grid_size(block_count);
+
+        auto block_count = get_parameter_uint(conf, "NUMBER_OF_BLOCKS");
         ::ktt::DimensionVector grid_size(block_count);
+
+        if (get_parameter_uint(conf, "DYNAMIC") == 2)
+        {
+            struct fake_mat
+            {
+                int num_entries = 0;
+                cusp::array1d<IndexType, cusp::host_memory> row_offsets;
+            };
+
+            namespace krn = std::chrono;
+            auto start = krn::steady_clock::now();
+
+            auto local_row_starts = cusp::array1d<int, cusp::host_memory>{ csr::row_starts.size() };
+
+            auto fake = fake_mat{ A.num_entries, A.row_offsets };
+
+            auto warps_in_block = get_parameter_uint(conf, "BLOCK_SIZE") / 32;
+            csr::cpu_compute_row_starts(fake, local_row_starts, block_count * warps_in_block);
+
+            csr::row_starts = local_row_starts;
+
+            auto end = krn::steady_clock::now();
+            auto time = krn::duration_cast<krn::microseconds>(end - start).count();
+            std::cout << "csr::cpu_compute_row_starts: " << time << " us" << std::endl;
+        }
 
         cudaMemset(csr::row_counter, 0, sizeof(int));
 

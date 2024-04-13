@@ -289,6 +289,64 @@ void csr_kernel_block(const unsigned int num_rows,
 }
 
 
+template<typename T, typename U>
+__device__
+auto divide_into(T value, U chunk)
+{
+    auto div = value / chunk;
+    if (value % chunk == 0)
+        return div;
+
+    return div + 1;
+}
+
+
+template<typename Idx, typename Val1, typename Val2, typename Val3>
+__device__
+void csr_kernel_balanced(const unsigned int num_rows,
+                         const Idx*   Ar,
+                         const Idx*   Ac,
+                         const Val1*  Ax,
+                         const Val2*  x,
+                         Val3*        y,
+                         const unsigned int num_entries,
+                         const int* row_starts)
+{
+    constexpr unsigned WARP_SIZE = 32;
+
+    const int ti         = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    // global “worker” index (a worker in this case is a warp that processes the given interval)
+    const int worker_idx = ti / WARP_SIZE;
+    const int lane       = mod2exp(threadIdx.x, WARP_SIZE);
+
+    const int worker_count = gridDim.x * BLOCK_SIZE / WARP_SIZE;
+    const int worker_chunk = divide_into(num_entries, worker_count);
+
+    const int begin =  worker_idx      * worker_chunk;
+    const int end   = (worker_idx + 1) * worker_chunk;
+
+    int row_begin = 0;
+    for (int row = row_starts[ worker_idx ]; row < num_rows && ( row_begin = Ar[ row ] ) < end; ++row)
+    {
+        int row_end   = Ar[ row + 1 ];
+        if (row_begin < begin) row_begin = begin;
+
+        Val1 value = 0;
+
+        for (int i = row_begin + lane; i < row_end && i < end; i += WARP_SIZE)
+            value += Ax[ i ] * x[ Ac[ i ] ];
+
+        constexpr unsigned mask = 0xffffffff;
+        #pragma unroll
+        for (int off = WARP_SIZE / 2; off >= 1; off /= 2)
+            value += __shfl_down_sync(mask, value, off);
+
+        if (lane == 0)
+            atomicAdd(&y[ row ], value);
+    }
+}
+
+
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __global__
@@ -298,9 +356,17 @@ void csr_spmv(const unsigned int num_rows,
               const Val1*  Ax,
               const Val2*  x,
               Val3*        y,
-              int* row_counter)
+              const unsigned int num_entries,
+              int* row_counter,
+              int* row_starts)
 {
     ::row_counter = row_counter;
+
+#if DYNAMIC == 2
+
+    csr_kernel_balanced<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y, num_entries, row_starts);
+
+#else
 
     if constexpr (THREADS_PER_ROW == 0)
         csr_kernel_block<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
@@ -310,4 +376,6 @@ void csr_spmv(const unsigned int num_rows,
         csr_kernel_warp<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
     else
         printf("invalid THREADS_PER_ROW value\n"), assert(false);
+
+#endif
 }
