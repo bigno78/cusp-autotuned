@@ -59,16 +59,32 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     // tuner.AddParameter(kernel_id, "ROWS_PER_WORKER", std::vector<uint64_t>{ 1, 2, 4, 8, 16, 32, 64, 128 });
     // tuner.AddParameter(kernel_id, "ROWS_PER_WORKER", std::vector<uint64_t>{ 1, 4, 64, 128, 10'000, 100'000 });
 
-    tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 32, 64, 128, 256, 512 });
+    tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 128, 256, 512 });
 
     auto dev_info = tuner.GetCurrentDeviceInfo();
     auto u = dev_info.GetMaxComputeUnits();
-    tuner.AddParameter(kernel_id, "NUMBER_OF_BLOCKS", std::vector<uint64_t>{ u / 2, u, u * 2, u * 4, u * 8, u * 16 });
+    tuner.AddParameter(kernel_id, "NUMBER_OF_BLOCKS", std::vector<uint64_t>{ u / 2,
+                                                                             u,
+                                                                             u * 2,
+                                                                             u * 4,
+                                                                             u * 8,
+                                                                             u * 16 });
 
     tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 0, 1, 2, 4, 8, 16, 32 });
 
-    // tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 0, 1 });
-    tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 2 });
+    tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 0, 1, 2 });
+    // tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 2 });
+
+    tuner.AddConstraint(kernel_id, { "THREADS_PER_ROW", "DYNAMIC" },
+        [](const std::vector<uint64_t>& vals)
+        {
+            if (vals[1] == 2) return vals[0] == 32
+                                  || vals[0] == 16
+                                  || vals[0] == 8
+                                  || vals[0] == 4
+                                  || vals[0] == 2;
+            return true;
+        });
 
     // tuner.AddConstraint(kernel_id, { "THREADS_PER_ROW", "DYNAMIC" },
     //     [](const std::vector<uint64_t>& vals)
@@ -79,7 +95,8 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     //         return true;
     //     });
 
-    unsigned max_workers = (u * 16) * 512;
+    // TODO: Calculate from the actual passed values above.
+    unsigned max_workers = (u * 32) * 512;
     row_starts = decltype(row_starts){ max_workers };
 
     // if (row_starts) cudaFree(row_starts);
@@ -241,14 +258,17 @@ auto get_launcher(const kernel_context& ctx,
 
             auto fake = fake_mat{ A.num_entries, A.row_offsets };
 
-            auto warps_in_block = get_parameter_uint(conf, "BLOCK_SIZE") / 32;
+            auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
+            if (threads_per_row == 0) threads_per_row = 32;
+
+            auto warps_in_block = get_parameter_uint(conf, "BLOCK_SIZE") / threads_per_row;
             csr::cpu_compute_row_starts(fake, local_row_starts, block_count * warps_in_block);
 
             csr::row_starts = local_row_starts;
 
             auto end = krn::steady_clock::now();
             auto time = krn::duration_cast<krn::microseconds>(end - start).count();
-            std::cout << "csr::cpu_compute_row_starts: " << time << " us" << std::endl;
+            // std::cout << "csr::cpu_compute_row_starts: " << time << " us" << std::endl;
         }
 
         cudaMemset(csr::row_counter, 0, sizeof(int));

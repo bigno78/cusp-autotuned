@@ -170,7 +170,7 @@ void csr_kernel_warp(const unsigned int num_rows,
     constexpr unsigned mask = 0xffffffff;
     #pragma unroll
     for (int off = THREADS_PER_ROW / 2; off >= 1; off /= 2)
-        value += __shfl_down_sync(mask, value, off);
+        value += __shfl_down_sync(mask, value, off, THREADS_PER_ROW);
 
     // value += __shfl_down_sync(mask, value, 16);
     // value += __shfl_down_sync(mask, value,  8);
@@ -291,7 +291,7 @@ void csr_kernel_block(const unsigned int num_rows,
 
 template<typename T, typename U>
 __device__
-auto divide_into(T value, U chunk)
+inline auto divide_into(T value, U chunk)
 {
     auto div = value / chunk;
     if (value % chunk == 0)
@@ -299,6 +299,14 @@ auto divide_into(T value, U chunk)
 
     return div + 1;
 }
+
+
+// template<typename T, typename U>
+// __device__
+// inline auto min(T a, U b)
+// {
+//     return a > b ? b : a;
+// }
 
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
@@ -312,45 +320,73 @@ void csr_kernel_balanced(const unsigned int num_rows,
                          const unsigned int num_entries,
                          const int* row_starts)
 {
-    constexpr unsigned WARP_SIZE = 32;
-
     const int ti         = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     // global “worker” index (a worker in this case is a warp that processes the given interval)
-    const int worker_idx = ti / WARP_SIZE;
-    const int lane       = mod2exp(threadIdx.x, WARP_SIZE);
+    const int worker_idx = ti / THREADS_PER_ROW;
+    const int lane       = mod2exp(threadIdx.x, THREADS_PER_ROW);
 
-    const int worker_count = gridDim.x * BLOCK_SIZE / WARP_SIZE;
+    const int worker_count = gridDim.x * BLOCK_SIZE / THREADS_PER_ROW;
     const int worker_chunk = divide_into(num_entries, worker_count);
 
-    const int begin =  worker_idx      * worker_chunk;
+    const int begin =       worker_idx      * worker_chunk;
     const int end   = min( (worker_idx + 1) * worker_chunk, num_entries );
 
-    // if (end > num_entries) end = num_entries;
+    if (begin >= end)
+        return;
 
-    int row_begin = 0;
-    for (int row = row_starts[ worker_idx ]; ( row_begin = Ar[ row ] ) < end; ++row)
+    int real_row_begin = 0;
+    for (int row = row_starts[ worker_idx ]; ( real_row_begin = Ar[ row ] ) < end; ++row)
     {
-        const int row_end   = Ar[ row + 1 ];
-        if (row_begin < begin) row_begin = begin;
+        const int real_row_end = Ar[ row + 1 ];
+
+        const int row_begin = max( real_row_begin, begin );
+        const int row_end   = min( real_row_end, end );
+        // if (row_begin < begin) row_begin = begin;
 
         Val1 value = 0;
 
-        for (int i = row_begin + lane; i < row_end && i < end; i += WARP_SIZE)
-            value += Ax[ i ] * x[ Ac[ i ] ];
+        // for (int i = row_begin + lane; i < row_end; i += THREADS_PER_ROW)
+        //     value += Ax[ i ] * x[ Ac[ i ] ];
+
+
+        if (THREADS_PER_ROW == 32 && row_end - row_begin > 32)
+        {
+            Idx aligned_start = row_begin - mod2exp(row_begin, 32) + lane;
+
+            if (int i = aligned_start; i >= row_begin && i < row_end)
+                value += Ax[ i ] * x[ Ac[ i ] ];
+
+            for (int i = aligned_start + THREADS_PER_ROW; i < row_end; i += THREADS_PER_ROW)
+                value += Ax[ i ] * x[ Ac[ i ] ];
+        }
+        else
+        {
+            for (int i = row_begin + lane; i < row_end; i += THREADS_PER_ROW)
+                value += Ax[ i ] * x[ Ac[ i ] ];
+        }
+
+
 
         constexpr unsigned mask = 0xffffffff;
         #pragma unroll
-        for (int off = WARP_SIZE / 2; off >= 1; off /= 2)
-            value += __shfl_down_sync(mask, value, off);
+        for (int off = THREADS_PER_ROW / 2; off >= 1; off /= 2)
+            value += __shfl_down_sync(mask, value, off, THREADS_PER_ROW);
 
         if (lane == 0)
-            atomicAdd(&y[ row ], value);
+        {
+            // This worker processed the whole row, no need for atomic op.
+            if ( (row_begin == real_row_begin) + (row_end == real_row_end) == 2 )
+                y[ row ] = value;
+            else
+                atomicAdd(&y[ row ], value);
+        }
     }
 }
 
 
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
+__launch_bounds__(BLOCK_SIZE, 1)
 __global__
 void csr_spmv(const unsigned int num_rows,
               const Idx*   Ar,
