@@ -65,11 +65,11 @@ int assign_row(const int prev_row, const int worker_idx)
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
 void csr_kernel_naive(const unsigned int num_rows,
-                const Idx*   Ar,
-                const Idx*   Ac,
-                const Val1*  Ax,
-                const Val2*  x,
-                Val3*        y)
+                const Idx*   __restrict__ Ar,
+                const Idx*   __restrict__ Ac,
+                const Val1*  __restrict__ Ax,
+                const Val2*  __restrict__ x,
+                Val3*        __restrict__ y)
 {
     int idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     const int total_threads = BLOCK_SIZE * gridDim.x;
@@ -110,11 +110,11 @@ void csr_kernel_naive(const unsigned int num_rows,
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
 void csr_kernel_warp(const unsigned int num_rows,
-                const Idx*   Ar,
-                const Idx*   Ac,
-                const Val1*  Ax,
-                const Val2*  x,
-                Val3*        y)
+                const Idx*   __restrict__ Ar,
+                const Idx*   __restrict__ Ac,
+                const Val1*  __restrict__ Ax,
+                const Val2*  __restrict__ x,
+                Val3*        __restrict__ y)
 {
     const int ti         = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     const int lane       = mod2exp(threadIdx.x, THREADS_PER_ROW);
@@ -194,11 +194,11 @@ void csr_kernel_warp(const unsigned int num_rows,
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
 void csr_kernel_block(const unsigned int num_rows,
-                const Idx*   Ar,
-                const Idx*   Ac,
-                const Val1*  Ax,
-                const Val2*  x,
-                Val3*        y)
+                const Idx*   __restrict__ Ar,
+                const Idx*   __restrict__ Ac,
+                const Val1*  __restrict__ Ax,
+                const Val2*  __restrict__ x,
+                Val3*        __restrict__ y)
 {
     const int WARP_SIZE = 32;
 
@@ -312,13 +312,13 @@ inline auto divide_into(T value, U chunk)
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
 void csr_kernel_balanced(const unsigned int num_rows,
-                         const Idx*   Ar,
-                         const Idx*   Ac,
-                         const Val1*  Ax,
-                         const Val2*  x,
-                         Val3*        y,
+                         const Idx*   __restrict__ Ar,
+                         const Idx*   __restrict__ Ac,
+                         const Val1*  __restrict__ Ax,
+                         const Val2*  __restrict__ x,
+                         Val3*        __restrict__ y,
                          const unsigned int num_entries,
-                         const int* row_starts)
+                         const int* __restrict__ row_starts)
 {
     const int ti         = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     // global “worker” index (a worker in this case is a warp that processes the given interval)
@@ -389,14 +389,14 @@ template<typename Idx, typename Val1, typename Val2, typename Val3>
 __launch_bounds__(BLOCK_SIZE, 1)
 __global__
 void csr_spmv(const unsigned int num_rows,
-              const Idx*   Ar,
-              const Idx*   Ac,
-              const Val1*  Ax,
-              const Val2*  x,
-              Val3*        y,
+              const Idx*   __restrict__ Ar,
+              const Idx*   __restrict__ Ac,
+              const Val1*  __restrict__ Ax,
+              const Val2*  __restrict__ x,
+              Val3*        __restrict__ y,
               const unsigned int num_entries,
-              int* row_counter,
-              int* row_starts)
+              int* __restrict__ row_counter,
+              const int* __restrict__ row_starts)
 {
     ::row_counter = row_counter;
 
