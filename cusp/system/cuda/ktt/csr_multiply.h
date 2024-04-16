@@ -82,7 +82,8 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
                                   || vals[0] == 16
                                   || vals[0] == 8
                                   || vals[0] == 4
-                                  || vals[0] == 2;
+                                  || vals[0] == 2
+                                  || vals[0] == 1;
             return true;
         });
 
