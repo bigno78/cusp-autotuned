@@ -51,6 +51,43 @@ inline void cpu_compute_row_starts(const Mat& A, Vec& out, int workers)
 }
 
 
+template<typename Idx>
+__global__
+void gpu_compute_row_starts(const unsigned int num_rows,
+                            const Idx* __restrict__ Ar,
+                            const unsigned int num_entries,
+                            Idx* __restrict__ row_starts,
+                            const int workers)
+{
+    const int ti = blockDim.x * blockIdx.x + threadIdx.x;
+
+    if (ti > num_rows)
+        return;
+
+    int chunk = DIVIDE_INTO(num_entries, workers);
+
+    int count = Ar[ ti ];
+    int next  = Ar[ ti + 1 ];
+
+    for (int w = count / chunk; w * chunk < next; ++w)
+    {
+        if (count <= w * chunk)
+            row_starts[w] = ti;
+    }
+}
+
+
+template<typename Mat, typename Vec>
+inline void device_compute_row_starts(const Mat& A, Vec* out, int workers)
+{
+    int block_size = 256;
+    int block_count = DIVIDE_INTO(A.num_rows, block_size);
+    gpu_compute_row_starts<<<block_count, block_size>>>(
+                                A.num_rows, A.row_offsets.data().get(),
+                                A.num_entries, out, workers);
+}
+
+
 inline void setup_tuning_parameters(const kernel_context& kernel)
 {
     auto& tuner = *kernel.tuner;
@@ -252,24 +289,40 @@ auto get_launcher(const kernel_context& ctx,
                 cusp::array1d<IndexType, cusp::host_memory> row_offsets;
             };
 
+float delta_ms = 0;
+cudaEvent_t cu_start, cu_stop;
+cudaEventCreate(&cu_start);
+cudaEventCreate(&cu_stop);
+
+cudaEventRecord(cu_start);
+
             namespace krn = std::chrono;
             auto start = krn::steady_clock::now();
 
-            auto local_row_starts = cusp::array1d<int, cusp::host_memory>{ csr::row_starts.size() };
-
-            auto fake = fake_mat{ A.num_entries, A.row_offsets };
+            // auto local_row_starts = cusp::array1d<int, cusp::host_memory>{ csr::row_starts.size() };
+            // auto fake = fake_mat{ A.num_entries, A.row_offsets };
 
             auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
             if (threads_per_row == 0) threads_per_row = 32;
 
             auto warps_in_block = get_parameter_uint(conf, "BLOCK_SIZE") / threads_per_row;
-            csr::cpu_compute_row_starts(fake, local_row_starts, block_count * warps_in_block);
+            int workers = block_count * warps_in_block;
 
-            csr::row_starts = local_row_starts;
+
+            // csr::cpu_compute_row_starts(fake, local_row_starts, workers);
+            csr::device_compute_row_starts(A, csr::row_starts.data().get(), workers);
+
+            // csr::row_starts = local_row_starts;
+
+    cudaEventRecord(cu_stop);
+
+    cudaEventSynchronize(cu_stop);
+    cudaEventElapsedTime(&delta_ms, cu_start, cu_stop);
 
             auto end = krn::steady_clock::now();
             auto time = krn::duration_cast<krn::microseconds>(end - start).count();
-            // std::cout << "csr::cpu_compute_row_starts: " << time << " us" << std::endl;
+            std::cout << "csr::compute_row_starts: " << " (cuda " << delta_ms * 1000 << " us)"
+                                                     << " (chro " << time << " us)" << std::endl;
         }
 
         cudaMemset(csr::row_counter, 0, sizeof(int));
