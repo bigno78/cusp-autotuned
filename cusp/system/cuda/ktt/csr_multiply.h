@@ -39,7 +39,7 @@ inline void cpu_compute_row_starts(const Mat& A, Vec& out, int workers)
     {
         int next = A.row_offsets[ i + 1 ];
 
-        while (count <= w * chunk && w * chunk < next)
+        while (count <= w * chunk && w * chunk < next && w < workers)
         {
             out[w] = i;
             ++w;
@@ -48,6 +48,10 @@ inline void cpu_compute_row_starts(const Mat& A, Vec& out, int workers)
         count = next;
     }
     // TODO: isn't there a corner case when not all workers have been assigned?
+    // for (; w < workers; ++w)
+    //     out[w] = A.row_offsets.size();
+    for (; w < workers; ++w)
+        out[w] = 0;
 }
 
 
@@ -61,13 +65,13 @@ void gpu_compute_row_starts(const unsigned int num_rows,
 {
     const int ti = blockDim.x * blockIdx.x + threadIdx.x;
 
-    if (ti > num_rows)
+    if (ti >= num_rows)
         return;
 
     int count = Ar[ ti ];
     int next  = Ar[ ti + 1 ];
 
-    for (int w = count / chunk; w * chunk < next; ++w)
+    for (int w = count / chunk; w < workers && w * chunk < next; ++w)
     {
         if (count <= w * chunk)
             row_starts[w] = ti;
@@ -82,6 +86,11 @@ inline void device_compute_row_starts(const Mat& A, Vec* out, int workers)
 
     int block_size = 256;
     int block_count = DIVIDE_INTO(A.num_rows, block_size);
+
+    // Important to reset the vector, since the kernel might not
+    // assign workers that fall outside of the bounds.
+    // cudaMemset(out, 0, workers);
+    cudaMemset(out, 0xff, workers);
 
     gpu_compute_row_starts<<<block_count, block_size>>>(
                                 A.num_rows, A.row_offsets.data().get(),
