@@ -122,6 +122,15 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 0, 1, 2 });
     // tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 2 });
 
+    tuner.AddParameter(kernel_id, "AVOID_ATOMIC", std::vector<uint64_t>{ 0, 1 });
+
+    tuner.AddConstraint(kernel_id, { "AVOID_ATOMIC", "DYNAMIC" },
+        [](const std::vector<uint64_t>& vals)
+        {
+            if (vals[0] == 1) return vals[1] == 2;
+            return true;
+        });
+
     tuner.AddConstraint(kernel_id, { "THREADS_PER_ROW", "DYNAMIC" },
         [](const std::vector<uint64_t>& vals)
         {
@@ -331,8 +340,8 @@ cudaEventRecord(cu_start);
 
             auto end = krn::steady_clock::now();
             auto time = krn::duration_cast<krn::microseconds>(end - start).count();
-            std::cout << "csr::compute_row_starts: " << " (cuda " << delta_ms * 1000 << " us)"
-                                                     << " (chro " << time << " us)" << std::endl;
+            // std::cout << "csr::compute_row_starts: " << " (cuda " << delta_ms * 1000 << " us)"
+            //                                          << " (chro " << time << " us)" << std::endl;
         }
 
         cudaMemset(csr::row_counter, 0, sizeof(int));

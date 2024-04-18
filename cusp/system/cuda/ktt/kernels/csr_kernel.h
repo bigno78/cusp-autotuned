@@ -374,10 +374,12 @@ void csr_kernel_balanced(const unsigned int num_rows,
 
         if (lane == 0)
         {
+#if AVOID_ATOMIC == 1
             // This worker processed the whole row, no need for atomic op.
             if ( (row_begin == real_row_begin) + (row_end == real_row_end) == 2 )
                 y[ row ] = value;
             else
+#endif
                 atomicAdd(&y[ row ], value);
         }
     }
