@@ -57,14 +57,12 @@ void gpu_compute_row_starts(const unsigned int num_rows,
                             const Idx* __restrict__ Ar,
                             const unsigned int num_entries,
                             Idx* __restrict__ row_starts,
-                            const int workers)
+                            const int workers, const int chunk)
 {
     const int ti = blockDim.x * blockIdx.x + threadIdx.x;
 
     if (ti > num_rows)
         return;
-
-    int chunk = DIVIDE_INTO(num_entries, workers);
 
     int count = Ar[ ti ];
     int next  = Ar[ ti + 1 ];
@@ -80,11 +78,14 @@ void gpu_compute_row_starts(const unsigned int num_rows,
 template<typename Mat, typename Vec>
 inline void device_compute_row_starts(const Mat& A, Vec* out, int workers)
 {
+    int chunk = DIVIDE_INTO(A.num_entries, workers);
+
     int block_size = 256;
     int block_count = DIVIDE_INTO(A.num_rows, block_size);
+
     gpu_compute_row_starts<<<block_count, block_size>>>(
                                 A.num_rows, A.row_offsets.data().get(),
-                                A.num_entries, out, workers);
+                                A.num_entries, out, workers, chunk);
 }
 
 
