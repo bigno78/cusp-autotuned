@@ -13,7 +13,7 @@ inline auto mod2exp(T v, S mod)
 
 
 __device__
-int assign_row(const int prev_row, const int worker_idx)
+int assign_row(const int prev_row, const int worker_idx, const int total_workers)
 {
     const int lane = mod2exp(threadIdx.x, 32);
 
@@ -22,7 +22,7 @@ int assign_row(const int prev_row, const int worker_idx)
 
 #if THREADS_PER_ROW == 32
     int row = 0;
-    if (lane == 0) row = atomicAdd(row_counter, 1);
+    if (lane == 0) row = total_workers + atomicAdd(row_counter, 1);
 
     constexpr unsigned mask = 0xffffffff;
     int got = __shfl_sync(mask, row, 0);
@@ -31,7 +31,7 @@ int assign_row(const int prev_row, const int worker_idx)
 #elif THREADS_PER_ROW == 1
 
     int row = 0;
-    if (lane == 0) row = atomicAdd(row_counter, 32);
+    if (lane == 0) row = total_workers + atomicAdd(row_counter, 32);
 
     constexpr unsigned mask = 0xffffffff;
     int got = lane + __shfl_sync(mask, row, 0);
@@ -42,14 +42,14 @@ int assign_row(const int prev_row, const int worker_idx)
     const int idx_in_blk = threadIdx.x;
     __shared__ int sh_row;
 
-    if (idx_in_blk == 0) sh_row = atomicAdd(row_counter, 1);
+    if (idx_in_blk == 0) sh_row = total_workers + atomicAdd(row_counter, 1);
     __syncthreads();
 
     return sh_row;
 
 #else
     int row = 0;
-    if (lane == 0) row = atomicAdd(row_counter, 32 / THREADS_PER_ROW);
+    if (lane == 0) row = total_workers + atomicAdd(row_counter, 32 / THREADS_PER_ROW);
 
     constexpr unsigned mask = 0xffffffff;
     int got = __shfl_sync(mask, row, 0);
@@ -80,7 +80,7 @@ void csr_kernel_naive(const unsigned int num_rows,
     Val1 sum = 0;
 #if DYNAMIC != 0
     int row = -1;
-    while ( ( row = assign_row(row, idx) ) < num_rows )
+    while ( ( row = assign_row(row, idx, total_threads) ) < num_rows )
 #else
     for (Idx row = idx; row < num_rows; row += total_threads)
 #endif
@@ -130,7 +130,7 @@ void csr_kernel_warp(const unsigned int num_rows,
 
 #if DYNAMIC != 0
     int row = -1;
-    while ( ( row = assign_row(row, ti / THREADS_PER_ROW) ) < num_rows )
+    while ( ( row = assign_row(row, ti / THREADS_PER_ROW, vector_count) ) < num_rows )
 #else
     for (Idx row = ti / THREADS_PER_ROW; row < num_rows; row += vector_count)
 #endif
@@ -224,7 +224,7 @@ void csr_kernel_block(const unsigned int num_rows,
 
 #if DYNAMIC != 0
     int row = -1;
-    while ( ( row = assign_row(row, begin) ) < num_rows )
+    while ( ( row = assign_row(row, begin, BLOCK_COUNT) ) < num_rows )
 #else
     for (unsigned row = begin; row < num_rows; row += BLOCK_COUNT)
 #endif
