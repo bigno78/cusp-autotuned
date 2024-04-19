@@ -203,11 +203,6 @@ void csr_kernel_warp(const unsigned int num_rows,
     for (Idx row = ti / THREADS_PER_ROW; row < num_rows; row += vector_count)
 #endif
     {
-
-    // TODO: fetch using two threads like cusp does
-    // Idx row_start = Ar[ row ];
-    // Idx row_end   = Ar[ row + 1 ];
-
     // TODO: This.
     if (lane < 2)
         sh_row_info[ worker_idx ][ lane ] = Ar[ row + lane ];
@@ -219,33 +214,11 @@ void csr_kernel_warp(const unsigned int num_rows,
     Val3 value = 0;
 
     value = accumulate<THREADS_PER_ROW, Val1, Val2, Idx>(0, lane, row_start, row_end, Ac, Ax, x);
-    // if (THREADS_PER_ROW == 32 && row_end - row_start > 32)
-    // {
-    //     Idx aligned_start = row_start - mod2exp(row_start, 32) + lane;
-
-    //     if (int i = aligned_start; i >= row_start && i < row_end)
-    //         value += Ax[ i ] * x[ Ac[ i ] ];
-
-    //     for (int i = aligned_start + THREADS_PER_ROW; i < row_end; i += THREADS_PER_ROW)
-    //         value += Ax[ i ] * x[ Ac[ i ] ];
-    // }
-    // else
-    // {
-    //     for (int i = row_start + lane; i < row_end; i += THREADS_PER_ROW)
-    //         value += Ax[ i ] * x[ Ac[ i ] ];
-    // }
-
 
     constexpr unsigned mask = 0xffffffff;
     #pragma unroll
     for (int off = THREADS_PER_ROW / 2; off >= 1; off /= 2)
         value += __shfl_down_sync(mask, value, off, THREADS_PER_ROW);
-
-    // value += __shfl_down_sync(mask, value, 16);
-    // value += __shfl_down_sync(mask, value,  8);
-    // value += __shfl_down_sync(mask, value,  4);
-    // value += __shfl_down_sync(mask, value,  2);
-    // value += __shfl_down_sync(mask, value,  1);
 
     if (lane == 0)
         y[ row ] = value;
@@ -316,9 +289,6 @@ void csr_kernel_block(const unsigned int num_rows,
 
     Val3 value = 0;
 
-    // for (int i = row_start + idx_in_blk; i < row_end; i += BLOCK_SIZE)
-    //     value += Ax[ i ] * x[ Ac[ i ] ];
-
     value = accumulate<BLOCK_SIZE, Val1, Val2, Idx>(0, idx_in_blk, row_start, row_end, Ac, Ax, x);
 
     const unsigned mask = 0xffffffff;
@@ -372,13 +342,6 @@ inline auto divide_into(T value, U chunk)
 }
 
 
-// template<typename T, typename U>
-// __device__
-// inline auto min(T a, U b)
-// {
-//     return a > b ? b : a;
-// }
-
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
@@ -416,29 +379,7 @@ void csr_kernel_balanced(const unsigned int num_rows,
 
         Val1 value = 0;
 
-        // for (int i = row_begin + lane; i < row_end; i += THREADS_PER_ROW)
-        //     value += Ax[ i ] * x[ Ac[ i ] ];
-
-
         value = accumulate<THREADS_PER_ROW, Val1, Val2, Idx>(0, lane, row_begin, row_end, Ac, Ax, x);
-
-        // if (THREADS_PER_ROW == 32 && row_end - row_begin > 32)
-        // {
-        //     Idx aligned_start = row_begin - mod2exp(row_begin, 32) + lane;
-
-        //     if (int i = aligned_start; i >= row_begin && i < row_end)
-        //         value += Ax[ i ] * x[ Ac[ i ] ];
-
-        //     for (int i = aligned_start + THREADS_PER_ROW; i < row_end; i += THREADS_PER_ROW)
-        //         value += Ax[ i ] * x[ Ac[ i ] ];
-        // }
-        // else
-        // {
-        //     for (int i = row_begin + lane; i < row_end; i += THREADS_PER_ROW)
-        //         value += Ax[ i ] * x[ Ac[ i ] ];
-        // }
-
-
 
         constexpr unsigned mask = 0xffffffff;
         #pragma unroll
