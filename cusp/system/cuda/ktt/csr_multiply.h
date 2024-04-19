@@ -120,11 +120,12 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 0, 1, 2, 4, 8, 16, 32 });
 
     tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 0, 1, 2 });
-    // tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 2 });
 
     tuner.AddParameter(kernel_id, "AVOID_ATOMIC", std::vector<uint64_t>{ 0, 1 });
     tuner.AddParameter(kernel_id, "ALIGNED", std::vector<uint64_t>{ 0, 1 });
     tuner.AddParameter(kernel_id, "SPECIAL_LOADS", std::vector<uint64_t>{ 0, 1 });
+
+    tuner.AddParameter(kernel_id, "UNROLL", std::vector<uint64_t>{ 0, 2, 4, 8, 16, 32 });
 
     tuner.AddConstraint(kernel_id, { "ALIGNED", "THREADS_PER_ROW" },
         [](const std::vector<uint64_t>& vals)

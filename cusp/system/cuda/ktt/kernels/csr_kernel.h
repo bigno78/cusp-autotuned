@@ -137,12 +137,18 @@ Val2 accumulate(Val2 value, const Idx lane, const Idx row_begin, const Idx row_e
         if (int i = aligned_start; i >= row_begin && i < row_end)
             value += get(i);
 
+#if UNROLL != 0
+        #pragma unroll (UNROLL)
+#endif
         for (int i = aligned_start + Total; i < row_end; i += Total)
             value += get(i);
     }
     else
 #endif
     {
+#if UNROLL != 0
+        #pragma unroll (UNROLL)
+#endif
         for (int i = row_begin + lane; i < row_end; i += Total)
             // value += Ax[ i ] * x[ Ac[ i ] ];
             value += get(i);
