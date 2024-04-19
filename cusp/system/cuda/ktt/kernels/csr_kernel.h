@@ -6,7 +6,7 @@ __device__ int* row_counter;
 // Modulo operation assuming mod is a value of this form: mod = 2^exp.
 template<typename T, typename S>
 __device__
-inline auto mod2exp(T v, S mod)
+inline auto modulo2exp(T v, S mod)
 {
     return v & (mod - 1);
 }
@@ -15,7 +15,7 @@ inline auto mod2exp(T v, S mod)
 __device__
 int assign_row(const int prev_row, const int worker_idx, const int total_workers)
 {
-    const int lane = mod2exp(threadIdx.x, 32);
+    const int lane = modulo2exp(threadIdx.x, 32);
 
     if (prev_row == -1)
         return worker_idx;
@@ -132,13 +132,14 @@ Val2 accumulate(Val2 value, const Idx lane, const Idx row_begin, const Idx row_e
 #if ALIGNED == 1
     if (Total % 32 == 0 && row_end - row_begin > 32)
     {
-        Idx aligned_start = row_begin - mod2exp(row_begin, 32) + lane;
+        Idx aligned_start = row_begin - modulo2exp(row_begin, 32) + lane;
 
         if (int i = aligned_start; i >= row_begin && i < row_end)
             value += get(i);
 
 #if UNROLL != 0
-        #pragma unroll (UNROLL)
+        constexpr int U = UNROLL;
+        #pragma unroll (U)
 #endif
         for (int i = aligned_start + Total; i < row_end; i += Total)
             value += get(i);
@@ -147,7 +148,8 @@ Val2 accumulate(Val2 value, const Idx lane, const Idx row_begin, const Idx row_e
 #endif
     {
 #if UNROLL != 0
-        #pragma unroll (UNROLL)
+        constexpr int U = UNROLL;
+        #pragma unroll (U)
 #endif
         for (int i = row_begin + lane; i < row_end; i += Total)
             // value += Ax[ i ] * x[ Ac[ i ] ];
@@ -213,7 +215,7 @@ void csr_kernel_warp(const unsigned int num_rows,
                 Val3*        __restrict__ y)
 {
     const int ti         = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    const int lane       = mod2exp(threadIdx.x, THREADS_PER_ROW);
+    const int lane       = modulo2exp(threadIdx.x, THREADS_PER_ROW);
     const int idx_in_blk = threadIdx.x;
     const int blk_idx    = blockIdx.x;
     const int worker_idx = threadIdx.x / THREADS_PER_ROW;
@@ -272,7 +274,7 @@ void csr_kernel_block(const unsigned int num_rows,
 {
     const int WARP_SIZE = 32;
 
-    const int lane = mod2exp(threadIdx.x, WARP_SIZE);
+    const int lane = modulo2exp(threadIdx.x, WARP_SIZE);
     const int blk_idx = blockIdx.x;
     const int idx_in_blk = threadIdx.x;
     const int warp_in_block = idx_in_blk / WARP_SIZE;
@@ -374,7 +376,7 @@ void csr_kernel_balanced(const unsigned int num_rows,
     const int ti         = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     // global “worker” index (a worker in this case is a warp that processes the given interval)
     const int worker_idx = ti / THREADS_PER_ROW;
-    const int lane       = mod2exp(threadIdx.x, THREADS_PER_ROW);
+    const int lane       = modulo2exp(threadIdx.x, THREADS_PER_ROW);
 
     const int worker_count = gridDim.x * BLOCK_SIZE / THREADS_PER_ROW;
     const int worker_chunk = divide_into(num_entries, worker_count);
@@ -386,7 +388,8 @@ void csr_kernel_balanced(const unsigned int num_rows,
         return;
 
     int real_row_begin = 0;
-    for (int row = row_starts[ worker_idx ]; ( real_row_begin = load_row_first(Ar + row) ) < end; ++row)
+    for (int row = row_starts[ worker_idx ]
+        ; row < num_rows && ( real_row_begin = load_row_first(Ar + row) ) < end; ++row)
     {
         const int real_row_end = load_row_last(Ar + row + 1);
 
@@ -443,14 +446,24 @@ void csr_spmv(const unsigned int num_rows,
 
 #else
 
-    if constexpr (THREADS_PER_ROW == 0)
+    #if THREADS_PER_ROW == 0
         csr_kernel_block<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
-    else if constexpr (THREADS_PER_ROW == 1)
+    #elif THREADS_PER_ROW == 1
         csr_kernel_naive<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
-    else if constexpr (THREADS_PER_ROW <= 32)
+    #elif THREADS_PER_ROW <= 32
         csr_kernel_warp<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
-    else
+    #else
         printf("invalid THREADS_PER_ROW value\n"), assert(false);
+    #endif
+
+    // if constexpr (THREADS_PER_ROW == 0)
+    //     csr_kernel_block<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
+    // else if constexpr (THREADS_PER_ROW == 1)
+    //     csr_kernel_naive<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
+    // else if constexpr (THREADS_PER_ROW <= 32)
+    //     csr_kernel_warp<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
+    // else
+    //     printf("invalid THREADS_PER_ROW value\n"), assert(false);
 
 #endif
 }
