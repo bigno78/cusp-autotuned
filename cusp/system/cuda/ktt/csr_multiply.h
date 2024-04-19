@@ -47,9 +47,6 @@ inline void cpu_compute_row_starts(const Mat& A, Vec& out, int workers)
 
         count = next;
     }
-    // TODO: isn't there a corner case when not all workers have been assigned?
-    // for (; w < workers; ++w)
-    //     out[w] = A.row_offsets.size();
     for (; w < workers; ++w)
         out[w] = 0;
 }
@@ -88,9 +85,10 @@ inline void device_compute_row_starts(const Mat& A, Vec* out, int workers)
     int block_count = DIVIDE_INTO(A.num_rows, block_size);
 
     // Important to reset the vector, since the kernel might not
-    // assign workers that fall outside of the bounds.
-    // cudaMemset(out, 0, workers);
-    cudaMemset(out, 0xff, workers);
+    // assign workers that fall outside of the bounds. Since those
+    // workers would get no work anyway, it's okay to set the vector
+    // to large values before the computation.
+    cudaMemset(out, 0x7f, workers);
 
     gpu_compute_row_starts<<<block_count, block_size>>>(
                                 A.num_rows, A.row_offsets.data().get(),

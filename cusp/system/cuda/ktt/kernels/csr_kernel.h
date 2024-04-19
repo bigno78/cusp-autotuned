@@ -412,6 +412,11 @@ void csr_kernel_balanced(const unsigned int num_rows,
 #endif
                 atomicAdd(&y[ row ], value);
         }
+
+        // TODO: AAAaaaAAaAAaaaAaaaAAAAAaAAAaAaaaaaaAAAaaAAAaaaaaAAA
+        // This means the worker has no more work, so no need to read another row offset value.
+        if (end <= real_row_end)
+            return;
     }
 }
 
