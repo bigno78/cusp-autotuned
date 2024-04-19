@@ -109,11 +109,9 @@ Val2 accumulate(Val2 value, const Idx lane, const Idx row_begin, const Idx row_e
         Idx aligned_start = row_begin - mod2exp(row_begin, 32) + lane;
 
         if (int i = aligned_start; i >= row_begin && i < row_end)
-            // value += Ax[ i ] * x[ Ac[ i ] ];
             value += get(i);
 
         for (int i = aligned_start + Total; i < row_end; i += Total)
-            // value += Ax[ i ] * x[ Ac[ i ] ];
             value += get(i);
     }
     else
@@ -142,8 +140,6 @@ void csr_kernel_naive(const unsigned int num_rows,
     const int total_threads = BLOCK_SIZE * gridDim.x;
     const Idx idx_in_blk = threadIdx.x;
 
-    // __shared__ Idx sh_row_info[ BLOCK_SIZE + 1 + 40 ];
-
     Val1 sum = 0;
 #if DYNAMIC != 0
     int row = -1;
@@ -156,6 +152,8 @@ void csr_kernel_naive(const unsigned int num_rows,
         // TODO: read this coalesed with the whole block, might be faster
         Idx row_start = Ar[row];
         Idx row_end = Ar[row + 1];
+
+        // TODO: Didn't seem to be faster.
         // constexpr int SHIFT = 17;
         // sh_row_info[ idx_in_blk + idx_in_blk / SHIFT ] = Ar[ row ];
         // if (idx_in_blk == BLOCK_SIZE - 1)
@@ -164,11 +162,6 @@ void csr_kernel_naive(const unsigned int num_rows,
         // Idx row_start = sh_row_info[ idx_in_blk + idx_in_blk / SHIFT ];
         // Idx row_end   = sh_row_info[ (idx_in_blk + 1) + ((idx_in_blk + 1) / SHIFT) ];
 
-        // for (Idx i = row_start; i < row_end; ++i)
-        // {
-        //     Val3 val = Ax[i] * x[Ac[i]];
-        //     sum += val;
-        // }
         sum = accumulate<1, Val1, Val2, Idx>(0, 0, row_start, row_end, Ac, Ax, x);
         y[row] = sum;
     }
@@ -193,7 +186,6 @@ void csr_kernel_warp(const unsigned int num_rows,
     const int vectors_per_block = BLOCK_SIZE / THREADS_PER_ROW;
     const int vector_count = gridDim.x * vectors_per_block;
 
-    // __shared__ Idx sh_row_info[2];
     __shared__ Idx sh_row_info[vectors_per_block][2];
 
 #if DYNAMIC != 0
@@ -251,11 +243,6 @@ void csr_kernel_block(const unsigned int num_rows,
 
     const int BLOCK_COUNT = gridDim.x;
 
-    // const int row = blk_idx;
-
-    // if (blk_idx >= num_rows)
-    //     return;
-
     __shared__ Val3 sh_sums[ BLOCK_SIZE / WARP_SIZE ];
     __shared__ Idx sh_row_info[2];
 
@@ -271,14 +258,6 @@ void csr_kernel_block(const unsigned int num_rows,
     for (unsigned row = begin; row < num_rows; row += BLOCK_COUNT)
 #endif
     {
-    // if (lane == 0)
-    //     sh_sums[ warp_in_block ] = 0;
-
-
-    // TODO: fetch using two threads like cusp does
-    // Idx row_start = Ar[ row ];
-    // Idx row_end = Ar[ row + 1 ];
-
     // TODO: check if this correct and faster
     if (idx_in_blk < 2)
         sh_row_info[ idx_in_blk ] = Ar[ row + idx_in_blk ];
@@ -375,7 +354,6 @@ void csr_kernel_balanced(const unsigned int num_rows,
 
         const int row_begin = max( real_row_begin, begin );
         const int row_end   = min( real_row_end, end );
-        // if (row_begin < begin) row_begin = begin;
 
         Val1 value = 0;
 
