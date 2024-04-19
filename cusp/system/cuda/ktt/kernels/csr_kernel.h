@@ -66,10 +66,10 @@ template<typename T>
 __device__
 T load_no_cache(const T* val)
 {
-#if SPECIAL_LOADS != 0
-    return __ldcs(val);
-#else
+#if SPECIAL_LOADS == 0
     return *val;
+#else
+    return __ldcs(val);
 #endif
 }
 
@@ -77,8 +77,34 @@ template<typename T>
 __device__
 T load_cache(const T* val)
 {
-#if SPECIAL_LOADS != 0
+#if SPECIAL_LOADS == 0
+    return *val;
+#else
     return __ldg(val);
+#endif
+}
+
+template<typename T>
+__device__
+T load_row_first(const T* val)
+{
+#if SPECIAL_LOADS == 2
+    return __ldcs(val);
+#elif SPECIAL_LOADS == 3
+    return __ldg(val);
+#else
+    return *val;
+#endif
+}
+
+template<typename T>
+__device__
+T load_row_last(const T* val)
+{
+#if SPECIAL_LOADS == 2
+    return __ldcs(val);
+#elif SPECIAL_LOADS == 3
+    return __ldcs(val);
 #else
     return *val;
 #endif
@@ -150,8 +176,11 @@ void csr_kernel_naive(const unsigned int num_rows,
     {
         sum = 0;
         // TODO: read this coalesed with the whole block, might be faster
-        Idx row_start = Ar[row];
-        Idx row_end = Ar[row + 1];
+        // Idx row_start = Ar[row];
+        // Idx row_end = Ar[row + 1];
+
+        Idx row_start = load_row_first(Ar + row);
+        Idx row_end   = load_row_last( Ar + row + 1);
 
         // TODO: Didn't seem to be faster.
         // constexpr int SHIFT = 17;
@@ -197,7 +226,8 @@ void csr_kernel_warp(const unsigned int num_rows,
     {
     // TODO: This.
     if (lane < 2)
-        sh_row_info[ worker_idx ][ lane ] = Ar[ row + lane ];
+        // sh_row_info[ worker_idx ][ lane ] = Ar[ row + lane ];
+        sh_row_info[ worker_idx ][ lane ] = load_row_last(Ar + row + lane);
     __syncthreads();
     Idx row_start = sh_row_info[ worker_idx ][ 0 ];
     Idx row_end   = sh_row_info[ worker_idx ][ 1 ];
@@ -260,7 +290,8 @@ void csr_kernel_block(const unsigned int num_rows,
     {
     // TODO: check if this correct and faster
     if (idx_in_blk < 2)
-        sh_row_info[ idx_in_blk ] = Ar[ row + idx_in_blk ];
+        // sh_row_info[ idx_in_blk ] = Ar[ row + idx_in_blk ];
+        sh_row_info[ idx_in_blk ] = load_row_last(Ar + row + idx_in_blk);
     __syncthreads();
     const Idx row_start = sh_row_info[ 0 ];
     const Idx row_end   = sh_row_info[ 1 ];
@@ -282,6 +313,7 @@ void csr_kernel_block(const unsigned int num_rows,
 
     __syncthreads();
 
+    // TODO: try idx_in_blk < 32 and use the whole warp to reduce shmem
     if (idx_in_blk == 0)
     {
         Val1 total_sum = 0;
@@ -348,9 +380,9 @@ void csr_kernel_balanced(const unsigned int num_rows,
         return;
 
     int real_row_begin = 0;
-    for (int row = row_starts[ worker_idx ]; ( real_row_begin = Ar[ row ] ) < end; ++row)
+    for (int row = row_starts[ worker_idx ]; ( real_row_begin = load_row_first(Ar + row) ) < end; ++row)
     {
-        const int real_row_end = Ar[ row + 1 ];
+        const int real_row_end = load_row_last(Ar + row + 1);
 
         const int row_begin = max( real_row_begin, begin );
         const int row_end   = min( real_row_end, end );
