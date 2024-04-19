@@ -26,6 +26,12 @@ inline float last_row_starts_compute_us = -1;
 inline int* row_counter = nullptr;
 
 
+inline void reset_row_counter()
+{
+    cudaMemset(row_counter, 0, sizeof(int));
+}
+
+
 template<typename Mat, typename Vec>
 inline void cpu_compute_row_starts(const Mat& A, Vec& out, int workers)
 {
@@ -98,14 +104,16 @@ inline void device_compute_row_starts(const Mat& A, Vec* out, int workers)
 
 
 template<typename Mat>
-void update_row_starts(const ::ktt::KernelConfiguration& conf, const Mat& A)
+void update_row_starts(int block_count, int block_size, int threads_per_row,
+                       const Mat& A)
 {
-    auto block_count = get_parameter_uint(conf, "NUMBER_OF_BLOCKS");
+    // auto block_count = get_parameter_uint(conf, "BLOCKS");
+    // auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
+    // auto warps_in_block = get_parameter_uint(conf, "BLOCK_SIZE") / threads_per_row;
 
-    auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
     if (threads_per_row == 0) threads_per_row = 32;
 
-    auto warps_in_block = get_parameter_uint(conf, "BLOCK_SIZE") / threads_per_row;
+    int warps_in_block = block_size / threads_per_row;
     int workers = block_count * warps_in_block;
 
     float delta_ms = 0;
@@ -136,12 +144,12 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
 
     auto dev_info = tuner.GetCurrentDeviceInfo();
     auto u = dev_info.GetMaxComputeUnits();
-    tuner.AddParameter(kernel_id, "NUMBER_OF_BLOCKS", std::vector<uint64_t>{ u / 2,
-                                                                             u,
-                                                                             u * 2,
-                                                                             u * 4,
-                                                                             u * 8,
-                                                                             u * 16 });
+    tuner.AddParameter(kernel_id, "BLOCKS", std::vector<uint64_t>{ u / 2,
+                                                                   u,
+                                                                   u * 2,
+                                                                   u * 4,
+                                                                   u * 8,
+                                                                   u * 16 });
 
     tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 0, 1, 2, 4, 8, 16, 32 });
 
@@ -325,18 +333,21 @@ auto get_launcher(const kernel_context& ctx,
         ::ktt::DimensionVector block_size =
             interface.GetCurrentLocalSize(ctx.definition_ids[0]);
 
-        auto block_count = get_parameter_uint(conf, "NUMBER_OF_BLOCKS");
+        auto block_count = get_parameter_uint(conf, "BLOCKS");
         ::ktt::DimensionVector grid_size(block_count);
 
         auto dynamic = get_parameter_uint(conf, "DYNAMIC");
 
         if (dynamic == 2)
-            csr::update_row_starts(conf, A);
+            csr::update_row_starts(block_count,
+                                   get_parameter_uint(conf, "BLOCK_SIZE"),
+                                   get_parameter_uint(conf, "THREADS_PER_ROW"),
+                                   A);
         else
             csr::last_row_starts_compute_us = -1;
 
         if (dynamic == 1)
-            cudaMemset(csr::row_counter, 0, sizeof(int));
+            csr::reset_row_counter();
 
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
