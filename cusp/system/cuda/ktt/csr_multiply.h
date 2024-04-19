@@ -19,9 +19,9 @@ namespace cusp::system::cuda::ktt {
 namespace csr {
 
 
-// inline int* row_starts = nullptr;
-inline cusp::array1d<int, cusp::device_memory> row_starts;
-
+inline int* row_starts = nullptr;
+inline int max_workers = 0;
+inline float last_row_starts_compute_us = -1;
 
 inline int* row_counter = nullptr;
 
@@ -84,8 +84,8 @@ inline void device_compute_row_starts(const Mat& A, Vec* out, int workers)
     int block_size = 256;
     int block_count = DIVIDE_INTO(A.num_rows, block_size);
 
-    // Important to reset the vector, since the kernel might not
-    // assign workers that fall outside of the bounds. Since those
+    // Important to reset the vector, because the kernel might not
+    // assign workers that fall outside of bounds. Since those
     // workers would get no work anyway, it's okay to set the vector
     // to large values before the computation.
     cudaMemset(out, 0x7f, workers);
@@ -96,13 +96,41 @@ inline void device_compute_row_starts(const Mat& A, Vec* out, int workers)
 }
 
 
+
+template<typename Mat>
+void update_row_starts(const ::ktt::KernelConfiguration& conf, const Mat& A)
+{
+    auto block_count = get_parameter_uint(conf, "NUMBER_OF_BLOCKS");
+
+    auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
+    if (threads_per_row == 0) threads_per_row = 32;
+
+    auto warps_in_block = get_parameter_uint(conf, "BLOCK_SIZE") / threads_per_row;
+    int workers = block_count * warps_in_block;
+
+    float delta_ms = 0;
+    cudaEvent_t cu_start, cu_stop;
+    cudaEventCreate(&cu_start);
+    cudaEventCreate(&cu_stop);
+    cudaEventRecord(cu_start);
+
+    device_compute_row_starts(A, row_starts, workers);
+
+    cudaEventRecord(cu_stop);
+    cudaEventSynchronize(cu_stop);
+    cudaEventElapsedTime(&delta_ms, cu_start, cu_stop);
+
+    last_row_starts_compute_us = delta_ms * 1000;
+    // std::cout << "csr::compute_row_starts: " << " (cuda " << last_row_starts_compute_us << " us)" << std::endl;
+}
+
+
+
+
 inline void setup_tuning_parameters(const kernel_context& kernel)
 {
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
-
-    // tuner.AddParameter(kernel_id, "ROWS_PER_WORKER", std::vector<uint64_t>{ 1, 2, 4, 8, 16, 32, 64, 128 });
-    // tuner.AddParameter(kernel_id, "ROWS_PER_WORKER", std::vector<uint64_t>{ 1, 4, 64, 128, 10'000, 100'000 });
 
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 128, 256, 512 });
 
@@ -161,12 +189,16 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     //     });
 
     // TODO: Calculate from the actual passed values above.
-    unsigned max_workers = (u * 32) * 512;
-    row_starts = decltype(row_starts){ max_workers };
+    // unsigned max_workers = (u * 32) * 512;
+    // row_starts = decltype(row_starts){ max_workers };
 
-    // if (row_starts) cudaFree(row_starts);
-    // cudaMalloc(&row_starts,   max_workers * sizeof(int));
-    // cudaMemset(row_starts, 0, max_workers * sizeof(int));
+    max_workers = (u * 32) * 512;
+
+    if (row_starts)
+        cudaFree(row_starts);
+
+    cudaMalloc(&row_starts,    max_workers * sizeof(int));
+    cudaMemset(row_starts,  0, max_workers * sizeof(int));
 
     tuner.AddThreadModifier(
         kernel.kernel_id,
@@ -293,66 +325,18 @@ auto get_launcher(const kernel_context& ctx,
         ::ktt::DimensionVector block_size =
             interface.GetCurrentLocalSize(ctx.definition_ids[0]);
 
-        // auto rows_per_worker = get_parameter_uint(conf, "ROWS_PER_WORKER");
-        // auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
-
-        // unsigned block_count = 0;
-
-        // if (threads_per_row == 0)
-        //     block_count = DIVIDE_INTO( A.num_rows, rows_per_worker );
-        // else
-        //     block_count = DIVIDE_INTO( A.num_rows, rows_per_worker * block_size.GetSizeX() / threads_per_row );
-
-        // ::ktt::DimensionVector grid_size(block_count);
-
         auto block_count = get_parameter_uint(conf, "NUMBER_OF_BLOCKS");
         ::ktt::DimensionVector grid_size(block_count);
 
-        if (get_parameter_uint(conf, "DYNAMIC") == 2)
-        {
-            struct fake_mat
-            {
-                unsigned long num_entries = 0;
-                cusp::array1d<IndexType, cusp::host_memory> row_offsets;
-            };
+        auto dynamic = get_parameter_uint(conf, "DYNAMIC");
 
-float delta_ms = 0;
-cudaEvent_t cu_start, cu_stop;
-cudaEventCreate(&cu_start);
-cudaEventCreate(&cu_stop);
+        if (dynamic == 2)
+            csr::update_row_starts(conf, A);
+        else
+            csr::last_row_starts_compute_us = -1;
 
-cudaEventRecord(cu_start);
-
-            namespace krn = std::chrono;
-            auto start = krn::steady_clock::now();
-
-            // auto local_row_starts = cusp::array1d<int, cusp::host_memory>{ csr::row_starts.size() };
-            // auto fake = fake_mat{ A.num_entries, A.row_offsets };
-
-            auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
-            if (threads_per_row == 0) threads_per_row = 32;
-
-            auto warps_in_block = get_parameter_uint(conf, "BLOCK_SIZE") / threads_per_row;
-            int workers = block_count * warps_in_block;
-
-
-            // csr::cpu_compute_row_starts(fake, local_row_starts, workers);
-            csr::device_compute_row_starts(A, csr::row_starts.data().get(), workers);
-
-            // csr::row_starts = local_row_starts;
-
-    cudaEventRecord(cu_stop);
-
-    cudaEventSynchronize(cu_stop);
-    cudaEventElapsedTime(&delta_ms, cu_start, cu_stop);
-
-            auto end = krn::steady_clock::now();
-            auto time = krn::duration_cast<krn::microseconds>(end - start).count();
-            // std::cout << "csr::compute_row_starts: " << " (cuda " << delta_ms * 1000 << " us)"
-            //                                          << " (chro " << time << " us)" << std::endl;
-        }
-
-        cudaMemset(csr::row_counter, 0, sizeof(int));
+        if (dynamic == 1)
+            cudaMemset(csr::row_counter, 0, sizeof(int));
 
         if (!profile) {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
