@@ -62,6 +62,73 @@ int assign_row(const int prev_row, const int worker_idx, const int total_workers
 
 
 
+template<typename T>
+__device__
+T load_no_cache(const T* val)
+{
+#if SPECIAL_LOADS != 0
+    return __ldcs(val);
+#else
+    return *val;
+#endif
+}
+
+template<typename T>
+__device__
+T load_cache(const T* val)
+{
+#if SPECIAL_LOADS != 0
+    return __ldg(val);
+#else
+    return *val;
+#endif
+}
+
+
+template<int Total,
+         typename Val1,
+         typename Val2,
+         typename Idx>
+__device__
+Val2 accumulate(Val2 value, const Idx lane, const Idx row_begin, const Idx row_end,
+                const Idx*   __restrict__ Ac,
+                const Val1*  __restrict__ Ax,
+                const Val2*  __restrict__ x)
+{
+    auto get = [&](Idx i)
+    {
+        auto mat = load_no_cache(Ax + i);
+        auto col = load_no_cache(Ac + i);
+        auto val = load_cache(x + col);
+        return mat * val;
+    };
+
+#if ALIGNED == 1
+    if (Total % 32 == 0 && row_end - row_begin > 32)
+    {
+        Idx aligned_start = row_begin - mod2exp(row_begin, 32) + lane;
+
+        if (int i = aligned_start; i >= row_begin && i < row_end)
+            // value += Ax[ i ] * x[ Ac[ i ] ];
+            value += get(i);
+
+        for (int i = aligned_start + Total; i < row_end; i += Total)
+            // value += Ax[ i ] * x[ Ac[ i ] ];
+            value += get(i);
+    }
+    else
+#endif
+    {
+        for (int i = row_begin + lane; i < row_end; i += Total)
+            // value += Ax[ i ] * x[ Ac[ i ] ];
+            value += get(i);
+    }
+
+    return value;
+}
+
+
+
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
 void csr_kernel_naive(const unsigned int num_rows,
@@ -97,11 +164,12 @@ void csr_kernel_naive(const unsigned int num_rows,
         // Idx row_start = sh_row_info[ idx_in_blk + idx_in_blk / SHIFT ];
         // Idx row_end   = sh_row_info[ (idx_in_blk + 1) + ((idx_in_blk + 1) / SHIFT) ];
 
-        for (Idx i = row_start; i < row_end; ++i)
-        {
-            Val3 val = Ax[i] * x[Ac[i]];
-            sum += val;
-        }
+        // for (Idx i = row_start; i < row_end; ++i)
+        // {
+        //     Val3 val = Ax[i] * x[Ac[i]];
+        //     sum += val;
+        // }
+        sum = accumulate<1, Val1, Val2, Idx>(0, 0, row_start, row_end, Ac, Ax, x);
         y[row] = sum;
     }
 }
@@ -150,21 +218,22 @@ void csr_kernel_warp(const unsigned int num_rows,
 
     Val3 value = 0;
 
-    if (THREADS_PER_ROW == 32 && row_end - row_start > 32)
-    {
-        Idx aligned_start = row_start - mod2exp(row_start, 32) + lane;
+    value = accumulate<THREADS_PER_ROW, Val1, Val2, Idx>(0, lane, row_start, row_end, Ac, Ax, x);
+    // if (THREADS_PER_ROW == 32 && row_end - row_start > 32)
+    // {
+    //     Idx aligned_start = row_start - mod2exp(row_start, 32) + lane;
 
-        if (int i = aligned_start; i >= row_start && i < row_end)
-            value += Ax[ i ] * x[ Ac[ i ] ];
+    //     if (int i = aligned_start; i >= row_start && i < row_end)
+    //         value += Ax[ i ] * x[ Ac[ i ] ];
 
-        for (int i = aligned_start + THREADS_PER_ROW; i < row_end; i += THREADS_PER_ROW)
-            value += Ax[ i ] * x[ Ac[ i ] ];
-    }
-    else
-    {
-        for (int i = row_start + lane; i < row_end; i += THREADS_PER_ROW)
-            value += Ax[ i ] * x[ Ac[ i ] ];
-    }
+    //     for (int i = aligned_start + THREADS_PER_ROW; i < row_end; i += THREADS_PER_ROW)
+    //         value += Ax[ i ] * x[ Ac[ i ] ];
+    // }
+    // else
+    // {
+    //     for (int i = row_start + lane; i < row_end; i += THREADS_PER_ROW)
+    //         value += Ax[ i ] * x[ Ac[ i ] ];
+    // }
 
 
     constexpr unsigned mask = 0xffffffff;
@@ -247,8 +316,10 @@ void csr_kernel_block(const unsigned int num_rows,
 
     Val3 value = 0;
 
-    for (int i = row_start + idx_in_blk; i < row_end; i += BLOCK_SIZE)
-        value += Ax[ i ] * x[ Ac[ i ] ];
+    // for (int i = row_start + idx_in_blk; i < row_end; i += BLOCK_SIZE)
+    //     value += Ax[ i ] * x[ Ac[ i ] ];
+
+    value = accumulate<BLOCK_SIZE, Val1, Val2, Idx>(0, idx_in_blk, row_start, row_end, Ac, Ax, x);
 
     const unsigned mask = 0xffffffff;
     value += __shfl_down_sync(mask, value, 16);
@@ -349,21 +420,23 @@ void csr_kernel_balanced(const unsigned int num_rows,
         //     value += Ax[ i ] * x[ Ac[ i ] ];
 
 
-        if (THREADS_PER_ROW == 32 && row_end - row_begin > 32)
-        {
-            Idx aligned_start = row_begin - mod2exp(row_begin, 32) + lane;
+        value = accumulate<THREADS_PER_ROW, Val1, Val2, Idx>(0, lane, row_begin, row_end, Ac, Ax, x);
 
-            if (int i = aligned_start; i >= row_begin && i < row_end)
-                value += Ax[ i ] * x[ Ac[ i ] ];
+        // if (THREADS_PER_ROW == 32 && row_end - row_begin > 32)
+        // {
+        //     Idx aligned_start = row_begin - mod2exp(row_begin, 32) + lane;
 
-            for (int i = aligned_start + THREADS_PER_ROW; i < row_end; i += THREADS_PER_ROW)
-                value += Ax[ i ] * x[ Ac[ i ] ];
-        }
-        else
-        {
-            for (int i = row_begin + lane; i < row_end; i += THREADS_PER_ROW)
-                value += Ax[ i ] * x[ Ac[ i ] ];
-        }
+        //     if (int i = aligned_start; i >= row_begin && i < row_end)
+        //         value += Ax[ i ] * x[ Ac[ i ] ];
+
+        //     for (int i = aligned_start + THREADS_PER_ROW; i < row_end; i += THREADS_PER_ROW)
+        //         value += Ax[ i ] * x[ Ac[ i ] ];
+        // }
+        // else
+        // {
+        //     for (int i = row_begin + lane; i < row_end; i += THREADS_PER_ROW)
+        //         value += Ax[ i ] * x[ Ac[ i ] ];
+        // }
 
 
 
