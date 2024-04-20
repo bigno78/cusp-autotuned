@@ -32,6 +32,9 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 16, 20, 32 });
     tuner.AddParameter(kernel_id, "SHARED", u64_vec{ 0, 1, 2 });
 
+
+    tuner.AddParameter(kernel_id, "AVOID_ATOMIC", u64_vec{ 0, 1 });
+
     tuner.AddConstraint(kernel_id, { "VALUES_PER_THREAD", "SHARED" },
         [](const std::vector<uint64_t>& vals)
         {
@@ -110,9 +113,6 @@ struct grid_config
 
 inline grid_config get_grid_config(size_t input_size, int vals_per_thread, int block_size)
 {
-    if (vals_per_thread == 500)
-        vals_per_thread = 1;
-
     grid_config result{};
     result.block_count         = DIVIDE_INTO(input_size, vals_per_thread * block_size);
     result.block_count_zeroing = DIVIDE_INTO(input_size, block_size);
@@ -174,9 +174,6 @@ auto get_launcher(const kernel_context& ctx,
     {
         const auto& conf = interface.GetCurrentConfiguration();
         auto vals_per_thread = get_parameter_uint(conf, "VALUES_PER_THREAD");
-
-        if (vals_per_thread == 500)
-            vals_per_thread = 1;
 
         using DimVec = ::ktt::DimensionVector;
 

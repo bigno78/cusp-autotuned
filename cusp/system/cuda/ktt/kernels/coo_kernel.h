@@ -130,10 +130,14 @@ void naive_multi_direct(const Idx* __restrict__ row_indices,
         Idx cur = row_indices[ i ];
         if (row != cur)
         {
+#if AVOID_ATOMIC == 1
             if (first)
+#endif
                 atomicAdd(&y[ row ], value);
+#if AVOID_ATOMIC == 1
             else
                 y[ row ] = value;
+#endif
             value = 0;
             first = false;
         }
@@ -303,10 +307,14 @@ void shared_single(const Idx* __restrict__ row_indices,
         {
             auto value = sh_vals[ idx_in_blk + 1 ];
 
+#if AVOID_ATOMIC == 1
             if (idx_in_blk == 0 || idx_in_blk == BLOCK_SIZE-1)
+#endif
                 atomicAdd( &( y[ cur_row ] ), value );
+#if AVOID_ATOMIC == 1
             else
                 y[ cur_row ] = value;
+#endif
         }
         else if (prv_row != cur_row && cur_row == nxt_row)
         {
@@ -316,11 +324,14 @@ void shared_single(const Idx* __restrict__ row_indices,
             {
                 sum += sh_vals[ i ];
             }
-
+#if AVOID_ATOMIC == 1
             if (idx_in_blk == 0 || i == BLOCK_SIZE + 1 || sh_rows[ i ] == -1)
+#endif
                 atomicAdd( &y[ cur_row ], sum );
+#if AVOID_ATOMIC == 1
             else
                 y[ cur_row ] = sum;
+#endif
         }
     // }
 }
@@ -401,8 +412,14 @@ void shared_multi(const Idx* __restrict__ row_indices,
         {
             if (row != -1)
             {
-                if (first) atomicAdd(&y[ row ], value);
-                else        y[ row ] = value;
+#if AVOID_ATOMIC == 1
+                if (first)
+#endif
+                    atomicAdd(&y[ row ], value);
+#if AVOID_ATOMIC == 1
+                else
+                    y[ row ] = value;
+#endif
             }
             value = 0;
             first = false;
