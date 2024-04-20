@@ -512,6 +512,101 @@ void shared_multi(const Idx* __restrict__ row_indices,
 
 
 
+// Modulo operation assuming mod is a value of this form: mod = 2^exp.
+template<typename T, typename S>
+__device__
+inline auto coo_mod2exp(T v, S mod)
+{
+    return v & (mod - 1);
+}
+
+
+template<typename T, typename U>
+__device__
+auto coo_divide_into(T value, U chunk)
+{
+    auto div = value / chunk;
+    if (value % chunk == 0)
+        return div;
+
+    return div + 1;
+}
+
+
+template<typename Idx, typename Val1, typename Val2, typename Val3>
+__device__
+void coo_warp_reduce(const Idx* __restrict__ row_indices,
+                     const Idx* __restrict__ col_indices,
+                     const Val1* __restrict__ values,
+                     const int num_entries,
+                     const Val2* __restrict__ x,
+                     Val3* __restrict__ y,
+                     const int y_size)
+{
+    constexpr unsigned WARP_SIZE = 32;
+
+    const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    const unsigned lane = coo_mod2exp(threadIdx.x, WARP_SIZE);
+    const unsigned global_warp_id = ti / WARP_SIZE;
+
+    const unsigned chunk = VALUES_PER_THREAD * WARP_SIZE;
+
+    const unsigned begin = global_warp_id * chunk;
+    const unsigned end = min( begin + chunk, num_entries );
+
+    if (begin >= end)
+        return;
+
+    Idx  carry_row = -1;
+    Val3 carry_val =  0;
+
+    for (unsigned idx = begin + lane; idx < end; idx += WARP_SIZE)
+    {
+        Idx row = row_indices[ idx ];
+        Idx col = col_indices[ idx ];
+
+        Val3 val = values[ idx ] * x[ col ];
+
+        // if (lane == 0)
+        // {
+        //     if (row == carry_row)
+        //         val += carry_val;
+        //     else if (carry_row != -1)
+        //         atomicAdd(y + carry_row, carry_val);
+        // }
+
+        constexpr unsigned mask = 0xffffffff;
+
+        for (unsigned off = 1; off <= WARP_SIZE / 2; off *= 2)
+        {
+            auto next_row = __shfl_up_sync(mask, row, off);
+            auto next_val = __shfl_up_sync(mask, val, off);
+
+            if (lane >= off && next_row == row)
+                val += next_val;
+        }
+
+        auto neigh_row = __shfl_down_sync(mask, row, 1);
+
+        if (lane < WARP_SIZE - 1 && row != neigh_row)
+        {
+            atomicAdd(y + row, val);
+        }
+
+        if (lane == WARP_SIZE - 1)
+        {
+            // carry_row = row;
+            // carry_val = val;
+            atomicAdd(y + row, val);
+        }
+    }
+
+    // if (lane == WARP_SIZE - 1)
+    //     if (carry_row != -1)
+    //         atomicAdd(y + carry_row, carry_val);
+}
+
+
 
 
 
