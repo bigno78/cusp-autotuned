@@ -567,13 +567,13 @@ void coo_warp_reduce(const Idx* __restrict__ row_indices,
 
         Val3 val = values[ idx ] * x[ col ];
 
-        // if (lane == 0)
-        // {
-        //     if (row == carry_row)
-        //         val += carry_val;
-        //     else if (carry_row != -1)
-        //         atomicAdd(y + carry_row, carry_val);
-        // }
+        if (lane == 0)
+        {
+            if (row == carry_row)
+                val += carry_val;
+            else if (carry_row != -1)
+                atomicAdd(y + carry_row, carry_val);
+        }
 
         constexpr unsigned mask = 0xffffffff;
 
@@ -597,13 +597,17 @@ void coo_warp_reduce(const Idx* __restrict__ row_indices,
         {
             // carry_row = row;
             // carry_val = val;
-            atomicAdd(y + row, val);
+            // atomicAdd(y + row, val);
         }
+
+        carry_row = __shfl_down_sync(mask, row, WARP_SIZE - 1);
+        carry_val = __shfl_down_sync(mask, val, WARP_SIZE - 1);
     }
 
     // if (lane == WARP_SIZE - 1)
-    //     if (carry_row != -1)
-    //         atomicAdd(y + carry_row, carry_val);
+    if (lane == 0)
+        if (carry_row != -1)
+            atomicAdd(y + carry_row, carry_val);
 }
 
 
