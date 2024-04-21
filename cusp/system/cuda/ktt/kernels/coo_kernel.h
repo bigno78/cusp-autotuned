@@ -557,8 +557,10 @@ void coo_warp_reduce(const Idx* __restrict__ row_indices,
     if (begin >= end)
         return;
 
+#if USE_CARRY != 0
     Idx  carry_row = -1;
     Val3 carry_val =  0;
+#endif
 
     for (unsigned idx = begin + lane; idx < end; idx += WARP_SIZE)
     {
@@ -567,6 +569,7 @@ void coo_warp_reduce(const Idx* __restrict__ row_indices,
 
         Val3 val = values[ idx ] * x[ col ];
 
+#if USE_CARRY != 0
         if (lane == 0)
         {
             if (row == carry_row)
@@ -574,6 +577,7 @@ void coo_warp_reduce(const Idx* __restrict__ row_indices,
             else if (carry_row != -1)
                 atomicAdd(y + carry_row, carry_val);
         }
+#endif
 
         constexpr unsigned mask = 0xffffffff;
 
@@ -593,21 +597,22 @@ void coo_warp_reduce(const Idx* __restrict__ row_indices,
             atomicAdd(y + row, val);
         }
 
-        if (lane == WARP_SIZE - 1)
-        {
-            // carry_row = row;
-            // carry_val = val;
-            // atomicAdd(y + row, val);
-        }
-
+#if USE_CARRY != 0
         carry_row = __shfl_down_sync(mask, row, WARP_SIZE - 1);
         carry_val = __shfl_down_sync(mask, val, WARP_SIZE - 1);
+#else
+        if (lane == WARP_SIZE - 1)
+        {
+            atomicAdd(y + row, val);
+        }
+#endif
     }
 
-    // if (lane == WARP_SIZE - 1)
+#if USE_CARRY != 0
     if (lane == 0)
         if (carry_row != -1)
             atomicAdd(y + carry_row, carry_val);
+#endif
 }
 
 

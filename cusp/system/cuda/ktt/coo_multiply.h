@@ -28,6 +28,8 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
 
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", u64_vec{ 128, 256, 512 });
 
+    tuner.AddParameter(kernel_id, "USE_CARRY", u64_vec{ 0, 1 });
+
     // tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 4, 8, 16, 32 });
     tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 16, 20, 32 });
     tuner.AddParameter(kernel_id, "SHARED", u64_vec{ 0, 1, 2 });
