@@ -16,10 +16,6 @@ void zero_output(const Idx* __restrict__ row_indices,
     const unsigned space = BLOCK_SIZE * gridDim.x;
     for (unsigned i = ti; i < y_size; i += space)
         y[ i ] = 0.0f;
-
-    // const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    // if (ti < y_size)
-    //     y[ ti ] = 0.0f;
 }
 
 
@@ -294,7 +290,6 @@ void shared_single(const Idx* __restrict__ row_indices,
         }
 
         __syncthreads();
-        // __threadfence_block();
 
         if (ti >= num_entries)
             return;
@@ -357,46 +352,26 @@ void shared_multi(const Idx* __restrict__ row_indices,
     __shared__ Idx  sh_rows[ BLOCK_SIZE * VALUES_PER_THREAD ];
     __shared__ Val1 sh_vals[ BLOCK_SIZE * VALUES_PER_THREAD ];
 
+    // #pragma unroll
+    for (int i = 0; i < VALUES_PER_THREAD; ++i)
+    {
+        // const int idx = ti * VALUES_PER_THREAD + BLOCK_SIZE * i;
+        const int idx = VALUES_PER_THREAD * BLOCK_SIZE * blockIdx.x
+                    + idx_in_blk + BLOCK_SIZE * i;
 
-    // const int last = VALUES_PER_THREAD * BLOCK_SIZE * blockIdx.x
-    //                 + BLOCK_SIZE * VALUES_PER_THREAD;
-    // if (last <= num_entries)
-    // {
-    //     #pragma unroll
-    //     for (int i = 0; i < VALUES_PER_THREAD; ++i)
-    //     {
-    //         const int idx = VALUES_PER_THREAD * BLOCK_SIZE * blockIdx.x
-    //                         + idx_in_blk + BLOCK_SIZE * i;
-
-    //         auto row = row_indices[ idx ];
-    //         auto value = values[ idx ] * x[ col_indices[ idx ] ];
-    //         sh_rows[ idx_in_blk + i * BLOCK_SIZE ] = row;
-    //         sh_vals[ idx_in_blk + i * BLOCK_SIZE ] = value;
-    //     }
-    // }
-    // else
-    // {
-        // #pragma unroll
-        for (int i = 0; i < VALUES_PER_THREAD; ++i)
+        if (idx < num_entries)
         {
-            // const int idx = ti * VALUES_PER_THREAD + BLOCK_SIZE * i;
-            const int idx = VALUES_PER_THREAD * BLOCK_SIZE * blockIdx.x
-                        + idx_in_blk + BLOCK_SIZE * i;
-
-            if (idx < num_entries)
-            {
-                auto row = row_indices[ idx ];
-                auto value = values[ idx ] * x[ col_indices[ idx ] ];
-                sh_rows[ idx_in_blk + i * BLOCK_SIZE ] = row;
-                sh_vals[ idx_in_blk + i * BLOCK_SIZE ] = value;
-            }
-            else
-            {
-                sh_rows[ idx_in_blk + i * BLOCK_SIZE ] = -1;
-                sh_vals[ idx_in_blk + i * BLOCK_SIZE ] = 0;
-            }
+            auto row = row_indices[ idx ];
+            auto value = values[ idx ] * x[ col_indices[ idx ] ];
+            sh_rows[ idx_in_blk + i * BLOCK_SIZE ] = row;
+            sh_vals[ idx_in_blk + i * BLOCK_SIZE ] = value;
         }
-    // }
+        else
+        {
+            sh_rows[ idx_in_blk + i * BLOCK_SIZE ] = -1;
+            sh_vals[ idx_in_blk + i * BLOCK_SIZE ] = 0;
+        }
+    }
 
     __syncthreads();
 
@@ -431,84 +406,6 @@ void shared_multi(const Idx* __restrict__ row_indices,
 }
 
 
-
-
-
-
-
-
-// template<typename Idx, typename Val1, typename Val2, typename Val3>
-// __device__
-// void shared_multi(const Idx* __restrict__ row_indices,
-//                   const Idx* __restrict__ col_indices,
-//                   const Val1* __restrict__ values,
-//                   const int num_entries,
-//                   const Val2* __restrict__ x,
-//                   Val3* __restrict__ y,
-//                   const int y_size)
-// {
-//     const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-//     const unsigned idx_in_blk = threadIdx.x;
-
-//     __shared__ Idx  sh_rows[ BLOCK_SIZE * VALUES_PER_THREAD + 2 ];
-//     __shared__ Val1 sh_vals[ BLOCK_SIZE * VALUES_PER_THREAD + 2 ];
-
-//     // last index in shared arrays
-//     const unsigned end = BLOCK_SIZE * VALUES_PER_THREAD + 1;
-
-//     if ( ( blockIdx.x + 1 ) * BLOCK_SIZE * VALUES_PER_THREAD < num_entries )
-//     {
-//         if (idx_in_blk == 0 || idx_in_blk == BLOCK_SIZE-1)
-//         {
-//             sh_rows[ idx_in_blk * VALUES_PER_THREAD ] = -1;
-//             sh_vals[ idx_in_blk * VALUES_PER_THREAD ] = 0;
-//             sh_rows[ idx_in_blk * VALUES_PER_THREAD + 2 ] = -1;
-//             sh_vals[ idx_in_blk * VALUES_PER_THREAD + 2 ] = 0;
-//         }
-
-//         for (int i = 0; i < VALUES_PER_THREAD; ++i)
-//         {
-//             const int idx = ti + VALUES_PER_THREAD * i;
-
-//             auto row = row_indices[ idx ];
-//             auto value = values[ idx ] * x[ col_indices[ idx ] ];
-//             sh_rows[ idx_in_blk + 1 + i * VALUES_PER_THREAD ] = row;
-//             sh_vals[ idx_in_blk + 1 + i * VALUES_PER_THREAD ] = value;
-//         }
-
-//         __syncthreads();
-
-//         for (int j = 0; j < VALUES_PER_THREAD; ++j)
-//         {
-//             const unsigned idx = idx_in_blk * VALUES_PER_THREAD + j;
-//             Idx prv_row = sh_rows[ idx ];
-//             Idx cur_row = sh_rows[ idx + 1 ];
-//             Idx nxt_row = sh_rows[ idx + 2 ];
-
-//             if (prv_row != cur_row && cur_row != nxt_row)
-//             {
-//                 auto value = sh_vals[ idx + 1 ];
-
-//                 if (idx == 0 || idx >= end)
-//                     atomicAdd( &( y[ cur_row ] ), value );
-//                 else
-//                     y[ cur_row ] = value;
-//             }
-//             else if (prv_row != cur_row && cur_row == nxt_row)
-//             {
-//                 Val1 sum = 0;
-//                 int i = idx + 1;
-//                 for (; sh_rows[ i ] == cur_row && i < end + 1; ++i)
-//                     sum += sh_vals[ i ];
-
-//                 if (idx_in_blk == 0 || i >= end)
-//                     atomicAdd( &y[ cur_row ], sum );
-//                 else
-//                     y[ cur_row ] = sum;
-//             }
-//         }
-//     }
-// }
 
 
 
