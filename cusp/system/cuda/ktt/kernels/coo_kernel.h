@@ -41,28 +41,6 @@ void naive_coo_kernel(const Idx* __restrict__ row_indices,
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
-void serial_coo_kernel(const Idx* __restrict__ row_indices,
-                      const Idx* __restrict__ col_indices,
-                      const Val1* __restrict__ values,
-                      const int num_entries,
-                      const Val2* __restrict__ x,
-                      Val3* __restrict__ y,
-                      const int y_size)
-{
-    const int idx = blockDim.x * blockIdx.x + threadIdx.x;
-    if (idx == 0)
-    {
-        printf("... SLOW naive_coo_kernel ...\n");
-        for (Idx n = 0; n < num_entries; n++)
-        {
-            y[row_indices[n]] += values[n] * x[col_indices[n]];
-        }
-    }
-}
-
-
-template<typename Idx, typename Val1, typename Val2, typename Val3>
-__device__
 void naive_multi(const Idx* __restrict__ row_indices,
                  const Idx* __restrict__ col_indices,
                  const Val1* __restrict__ values,
@@ -72,124 +50,37 @@ void naive_multi(const Idx* __restrict__ row_indices,
                  const int y_size)
 {
     const unsigned idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    const int begin = idx * VALUES_PER_THREAD;
-    const int end = min(num_entries, begin + VALUES_PER_THREAD);
+    const unsigned begin = idx * VALUES_PER_THREAD;
+    const unsigned end = min(num_entries, begin + VALUES_PER_THREAD);
 
     // no work left for this thread
     if (begin >= end)
         return;
 
-    float value = 0;
+    Val3 value = 0;
     Idx row = row_indices[ begin ];
-    for (int i = begin; i < end; ++i)
-    {
-        Idx cur = row_indices[ i ];
-        if (row != cur)
-        {
-            atomicAdd(&y[ row ], value);
-            value = 0;
-        }
-        value += values[ i ] * x[ col_indices[ i ] ];
-        row = cur;
-    }
-    auto* ptr = &y[ row ];
-    atomicAdd(ptr, value);
-}
-
-
-template<typename Idx, typename Val1, typename Val2, typename Val3>
-__device__
-void naive_multi_direct(const Idx* __restrict__ row_indices,
-                        const Idx* __restrict__ col_indices,
-                        const Val1* __restrict__ values,
-                        const int num_entries,
-                        const Val2* __restrict__ x,
-                        Val3* __restrict__ y,
-                        const int y_size)
-{
-    const unsigned idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    const int begin = idx * VALUES_PER_THREAD;
-    const int end = min(num_entries, begin + VALUES_PER_THREAD);
-
-    // no work left for this thread
-    if (begin >= end)
-        return;
-
-    float value = 0;
-    Idx row = row_indices[ begin ];
+#if AVOID_ATOMIC == 1
     bool first = true;
+#endif
     for (int i = begin; i < end; ++i)
     {
         Idx cur = row_indices[ i ];
         if (row != cur)
         {
 #if AVOID_ATOMIC == 1
-            if (first)
-#endif
-                atomicAdd(&y[ row ], value);
-#if AVOID_ATOMIC == 1
-            else
-                y[ row ] = value;
+            if (first) atomicAdd(&y[ row ], value);
+            else       y[ row ] = value;
+            first = false;
+#else
+            atomicAdd(&y[ row ], value);
 #endif
             value = 0;
-            first = false;
         }
         value += values[ i ] * x[ col_indices[ i ] ];
         row = cur;
     }
     auto* ptr = &y[ row ];
     atomicAdd(ptr, value);
-}
-
-
-template<typename Idx, typename Val1, typename Val2, typename Val3>
-__device__
-void shared_single(const Idx* __restrict__ row_indices,
-                   const Idx* __restrict__ col_indices,
-                   const Val1* __restrict__ values,
-                   const int num_entries,
-                   const Val2* __restrict__ x,
-                   Val3* __restrict__ y,
-                   const int y_size);
-
-
-template<typename Idx, typename Val1, typename Val2, typename Val3>
-__device__
-void shared_multi(const Idx* __restrict__ row_indices,
-                  const Idx* __restrict__ col_indices,
-                  const Val1* __restrict__ values,
-                  const int num_entries,
-                  const Val2* __restrict__ x,
-                  Val3* __restrict__ y,
-                  const int y_size);
-
-
-template<typename Idx, typename Val1, typename Val2, typename Val3>
-__device__
-void coo_kernel(const Idx* __restrict__ row_indices,
-                const Idx* __restrict__ col_indices,
-                const Val1* __restrict__ values,
-                const int num_entries,
-                const Val2* __restrict__ x,
-                Val3* __restrict__ y,
-                const int y_size)
-{
-#if VALUES_PER_THREAD == 1
-    #if SHARED == 1
-        shared_single(      row_indices, col_indices, values, num_entries, x, y, y_size     );
-    #else
-        naive_coo_kernel(   row_indices, col_indices, values, num_entries, x, y, y_size     );
-    #endif
-#else
-    #if SHARED == 1
-        shared_multi(       row_indices, col_indices, values, num_entries, x, y, y_size    );
-    #elif SHARED == 0
-        // naive_multi(        row_indices, col_indices, values, num_entries, x, y, y_size    );
-        naive_multi_direct( row_indices, col_indices, values, num_entries, x, y, y_size);
-    #else
-        naive_multi(        row_indices, col_indices, values, num_entries, x, y, y_size    );
-    #endif
-#endif
 }
 
 
@@ -457,6 +348,19 @@ void coo_spmv(const Idx* __restrict__ row_indices,
                Val3* __restrict__ y,
                const int y_size)
 {
-    coo_kernel<Idx, Val1, Val2, Val3>
-              (row_indices, col_indices, values, num_entries, x, y, y_size);
+#if IMPL == 0
+    coo_warp_reduce(        row_indices, col_indices, values, num_entries, x, y, y_size    );
+#elif IMPL == 1
+    #if VALUES_PER_THREAD == 1
+        naive_coo_kernel(   row_indices, col_indices, values, num_entries, x, y, y_size    );
+    #else
+        naive_multi(        row_indices, col_indices, values, num_entries, x, y, y_size    );
+    #endif
+#else
+    #if VALUES_PER_THREAD == 1
+        shared_single(      row_indices, col_indices, values, num_entries, x, y, y_size    );
+    #else
+        shared_multi(       row_indices, col_indices, values, num_entries, x, y, y_size    );
+    #endif
+#endif
 }
