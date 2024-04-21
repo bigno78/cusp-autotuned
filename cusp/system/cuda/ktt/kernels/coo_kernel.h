@@ -15,9 +15,8 @@ void zero_output(const Idx* __restrict__ row_indices,
     const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     const unsigned space = BLOCK_SIZE * gridDim.x;
     for (unsigned i = ti; i < y_size; i += space)
-        y[ i ] = 0.0f;
+        y[ i ] = 0;
 }
-
 
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
@@ -38,7 +37,6 @@ void naive_coo_kernel(const Idx* __restrict__ row_indices,
         atomicAdd(ptr, value);
     }
 }
-
 
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
@@ -99,7 +97,6 @@ void naive_multi(const Idx* __restrict__ row_indices,
 }
 
 
-
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
 void naive_multi_direct(const Idx* __restrict__ row_indices,
@@ -143,62 +140,6 @@ void naive_multi_direct(const Idx* __restrict__ row_indices,
     auto* ptr = &y[ row ];
     atomicAdd(ptr, value);
 }
-
-
-
-
-template<typename Idx, typename Val1, typename Val2, typename Val3>
-__device__
-void old_naive_multi_shared(const Idx* __restrict__ row_indices,
-                        const Idx* __restrict__ col_indices,
-                        const Val1* __restrict__ values,
-                        const int num_entries,
-                        const Val2* __restrict__ x,
-                        Val3* __restrict__ y,
-                        const int y_size)
-{
-    const unsigned idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
-    const unsigned idx_in_blk = threadIdx.x;
-    const int begin = idx * VALUES_PER_THREAD;
-    const int end = min(num_entries, begin + VALUES_PER_THREAD);
-
-    __shared__ Idx  sh_rows[ BLOCK_SIZE * VALUES_PER_THREAD ];
-    __shared__ Val1 sh_vals[ BLOCK_SIZE * VALUES_PER_THREAD ];
-
-    if (idx >= num_entries)
-        return;
-
-    // no work left for this thread
-    if (begin >= end)
-        return;
-
-    int it = 0;
-    for (int i = begin; i < end; ++i, ++it)
-    {
-        sh_rows[ idx_in_blk * VALUES_PER_THREAD + it ] = row_indices[ i ];
-        sh_vals[ idx_in_blk * VALUES_PER_THREAD + it ] = values[ i ] * x[ col_indices[ i ] ];
-    }
-
-    Idx row = sh_rows[ idx_in_blk * VALUES_PER_THREAD ];
-    Val1 value = 0;
-
-    for (int i = 0; i < end - begin; ++i)
-    {
-        Idx cur = sh_rows[ idx_in_blk * VALUES_PER_THREAD + i ];
-        if (row != cur)
-        {
-            atomicAdd(&( y[ row ] ), value);
-            value = 0;
-        }
-        value += sh_vals[ idx_in_blk * VALUES_PER_THREAD + i ];
-        row = cur;
-    }
-
-    // Add the last one.
-    atomicAdd( &( y[ row ] ), value );
-}
-
-
 
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
@@ -268,8 +209,7 @@ void shared_single(const Idx* __restrict__ row_indices,
     __shared__ Idx  sh_rows[ BLOCK_SIZE + 2 ];
     __shared__ Val1 sh_vals[ BLOCK_SIZE + 2 ];
 
-    // if (ti < num_entries)
-    // {
+
         if (idx_in_blk == 0 || idx_in_blk == BLOCK_SIZE-1)
         {
             sh_rows[ idx_in_blk ] = -1;
@@ -328,13 +268,7 @@ void shared_single(const Idx* __restrict__ row_indices,
                 y[ cur_row ] = sum;
 #endif
         }
-    // }
 }
-
-
-
-
-
 
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
@@ -352,10 +286,10 @@ void shared_multi(const Idx* __restrict__ row_indices,
     __shared__ Idx  sh_rows[ BLOCK_SIZE * VALUES_PER_THREAD ];
     __shared__ Val1 sh_vals[ BLOCK_SIZE * VALUES_PER_THREAD ];
 
+    // TODO: unroll tuning parameter
     // #pragma unroll
     for (int i = 0; i < VALUES_PER_THREAD; ++i)
     {
-        // const int idx = ti * VALUES_PER_THREAD + BLOCK_SIZE * i;
         const int idx = VALUES_PER_THREAD * BLOCK_SIZE * blockIdx.x
                     + idx_in_blk + BLOCK_SIZE * i;
 
@@ -380,6 +314,8 @@ void shared_multi(const Idx* __restrict__ row_indices,
     auto row = sh_rows[ begin ];
     Val1 value = 0;
     bool first = true;
+
+    // TODO: unroll tuning parameter, too
     for (int i = 0; i < VALUES_PER_THREAD; ++i)
     {
         Idx cur = sh_rows[ begin + i ];
@@ -404,9 +340,6 @@ void shared_multi(const Idx* __restrict__ row_indices,
     }
     if (row != -1) atomicAdd(&y[ row ], value);
 }
-
-
-
 
 
 // Modulo operation assuming mod is a value of this form: mod = 2^exp.
@@ -511,9 +444,6 @@ void coo_warp_reduce(const Idx* __restrict__ row_indices,
             atomicAdd(y + carry_row, carry_val);
 #endif
 }
-
-
-
 
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
