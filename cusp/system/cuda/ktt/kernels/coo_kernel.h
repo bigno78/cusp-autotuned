@@ -94,12 +94,21 @@ void shared_single(const Idx* __restrict__ row_indices,
                    Val3* __restrict__ y,
                    const int y_size)
 {
-    const unsigned ti = BLOCK_SIZE * blockIdx.x + threadIdx.x;
+    // const unsigned ti         = blockIdx.x * BLOCK_SIZE + threadIdx.x;
     const unsigned idx_in_blk = threadIdx.x;
+    const unsigned begin      = blockIdx.x * BLOCK_SIZE * VALUES_PER_THREAD;
+    // const unsigned end        = begin      + BLOCK_SIZE * VALUES_PER_THREAD;
 
     __shared__ Idx  sh_rows[ BLOCK_SIZE + 2 ];
     __shared__ Val1 sh_vals[ BLOCK_SIZE + 2 ];
 
+    for (int j = begin + idx_in_blk, i = 0; i < VALUES_PER_THREAD; j += BLOCK_SIZE, ++i)
+    {
+#if VALUES_PER_THREAD > 1
+        // Need for sync. Some threads might be still reading shmem
+        // from the end of the previous iteration.
+        __syncthreads();
+#endif
 
         if (idx_in_blk == 0 || idx_in_blk == BLOCK_SIZE-1)
         {
@@ -109,10 +118,10 @@ void shared_single(const Idx* __restrict__ row_indices,
             sh_vals[ idx_in_blk + 2 ] = 0;
         }
 
-        if (ti < num_entries)
+        if (j < num_entries)
         {
-            sh_rows[ idx_in_blk + 1 ] = row_indices[ ti ];
-            sh_vals[ idx_in_blk + 1 ] = values[ ti ] * x[ col_indices[ ti ] ];
+            sh_rows[ idx_in_blk + 1 ] = row_indices[ j ];
+            sh_vals[ idx_in_blk + 1 ] = values[ j ] * x[ col_indices[ j ] ];
         }
         else
         {
@@ -122,7 +131,7 @@ void shared_single(const Idx* __restrict__ row_indices,
 
         __syncthreads();
 
-        if (ti >= num_entries)
+        if (j >= num_entries)
             return;
 
         Idx prv_row = sh_rows[ idx_in_blk ];
@@ -159,6 +168,7 @@ void shared_single(const Idx* __restrict__ row_indices,
                 y[ cur_row ] = sum;
 #endif
         }
+    }
 }
 
 
@@ -356,11 +366,9 @@ void coo_spmv(const Idx* __restrict__ row_indices,
     #else
         naive_multi(        row_indices, col_indices, values, num_entries, x, y, y_size    );
     #endif
-#else
-    #if VALUES_PER_THREAD == 1
+#elif IMPL == 2
         shared_single(      row_indices, col_indices, values, num_entries, x, y, y_size    );
-    #else
+#else
         shared_multi(       row_indices, col_indices, values, num_entries, x, y, y_size    );
-    #endif
 #endif
 }

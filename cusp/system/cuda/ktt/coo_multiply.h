@@ -28,7 +28,7 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
 
     tuner.AddParameter(kernel_id, "BLOCK_SIZE", u64_vec{ 128, 256, 512 });
     tuner.AddParameter(kernel_id, "VALUES_PER_THREAD", u64_vec{ 1, 2, 3, 5, 6, 7, 8, 9, 10, 12, 15, 17, 19, 20, 21, 33 });
-    tuner.AddParameter(kernel_id, "IMPL", u64_vec{ 0, 1, 2 });
+    tuner.AddParameter(kernel_id, "IMPL", u64_vec{ 0, 1, 2, 3 });
 
     tuner.AddParameter(kernel_id, "USE_CARRY", u64_vec{ 0, 1 });
     tuner.AddParameter(kernel_id, "AVOID_ATOMIC", u64_vec{ 0, 1 });
@@ -40,10 +40,11 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
             return true;
         });
 
-    tuner.AddConstraint(kernel_id, { "AVOID_ATOMIC", "IMPL" },
+    tuner.AddConstraint(kernel_id, { "AVOID_ATOMIC", "IMPL", "VALUES_PER_THREAD" },
         [](const auto& vals)
         {
-            if (vals[0] == 1) return vals[1] == 1 || vals[1] == 2;
+            if (vals[0] == 1) return (vals[1] == 1 && vals[2] != 1)
+                                   || vals[1] == 2 || vals[1] == 3;
             return true;
         });
 
