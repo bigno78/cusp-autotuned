@@ -140,11 +140,14 @@ tune(::ktt::Tuner& tuner,
         launcher(interface);
     });
 
-    auto results = tuner.Tune(kernel.kernel_id, std::move(stop_condition));
+    auto results = stop_condition
+            ? tuner.Tune(kernel.kernel_id, std::move(stop_condition))
+            : tuner.Tune(kernel.kernel_id);
 
     remove_arguments(kernel, args);
 
-    tuner.SetSearcher(kernel.kernel_id, std::make_unique<::ktt::DeterministicSearcher);
+    if (searcher)
+        tuner.SetSearcher(kernel.kernel_id, std::make_unique<::ktt::DeterministicSearcher>());
 
     return results;
 }
