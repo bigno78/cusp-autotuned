@@ -205,6 +205,8 @@ void csr_kernel_naive(const unsigned int num_rows,
 }
 
 
+#if THREADS_PER_ROW != 0
+
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
 void csr_kernel_warp(const unsigned int num_rows,
@@ -255,6 +257,8 @@ void csr_kernel_warp(const unsigned int num_rows,
 
     }
 }
+
+#endif
 
 
 
@@ -309,12 +313,10 @@ void csr_kernel_block(const unsigned int num_rows,
 
     value = accumulate<BLOCK_SIZE, Val1, Val2, Idx>(0, idx_in_blk, row_start, row_end, Ac, Ax, x);
 
-    const unsigned mask = 0xffffffff;
-    value += __shfl_down_sync(mask, value, 16);
-    value += __shfl_down_sync(mask, value, 8);
-    value += __shfl_down_sync(mask, value, 4);
-    value += __shfl_down_sync(mask, value, 2);
-    value += __shfl_down_sync(mask, value, 1);
+    constexpr unsigned mask = 0xffffffff;
+    #pragma unroll
+    for (int off = WARP_SIZE / 2; off >= 1; off /= 2)
+        value += __shfl_down_sync(mask, value, off);
 
     if (lane == 0)
         sh_sums[ warp_in_block ] = value;
@@ -331,20 +333,22 @@ void csr_kernel_block(const unsigned int num_rows,
         y[ row ] = total_sum;
     }
 
-    // TODO: these is some bug in this that makes it loop forever
-    // const int WARPS_PER_BLOCK = BLOCK_SIZE / WARP_SIZE;
-    // if (idx_in_blk < WARPS_PER_BLOCK / 2)
+    // Reduce using warp shuffles.
+    // Val1 sum = 0;
+    // constexpr unsigned warp_count = BLOCK_SIZE / WARP_SIZE;
+    // if (idx_in_blk < WARP_SIZE)
     // {
-    //     for (int offset = WARPS_PER_BLOCK / 2; offset > 0; offset /= 2)
-    //     {
-    //         auto my_val = sh_sums[ warp_in_block ];
-    //         auto friend_val = sh_sums[ warp_in_block + offset ];
-    //         sh_sums[ warp_in_block ] = my_val + friend_val;
-    //         __syncthreads();
-    //     }
+    //     if (idx_in_blk < warp_count)
+    //         sum = sh_sums[ idx_in_blk ];
+
+    //     constexpr unsigned mask = 0xffffffff;
+    //     #pragma unroll
+    //     for (int off = warp_count / 2; off >= 1; off /= 2)
+    //         sum += __shfl_down_sync(mask, sum, off, warp_count);
+
+    //     if (idx_in_blk == 0)
+    //         y[ row ] = sum;
     // }
-    // if (idx_in_blk == 0)
-    //     y[ row ] = sh_sums[ 0 ];
     }
 }
 

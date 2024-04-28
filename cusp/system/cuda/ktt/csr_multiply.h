@@ -157,9 +157,9 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
 
     tuner.AddParameter(kernel_id, "AVOID_ATOMIC", std::vector<uint64_t>{ 0, 1 });
     tuner.AddParameter(kernel_id, "ALIGNED", std::vector<uint64_t>{ 0, 1 });
-    tuner.AddParameter(kernel_id, "SPECIAL_LOADS", std::vector<uint64_t>{ 0, 1 });
+    tuner.AddParameter(kernel_id, "SPECIAL_LOADS", std::vector<uint64_t>{ 0, 1, 2, 3 });
 
-    tuner.AddParameter(kernel_id, "UNROLL", std::vector<uint64_t>{ 0, 2, 4, 8, 16, 32 });
+    tuner.AddParameter(kernel_id, "UNROLL", std::vector<uint64_t>{ 0, 1, 2, 4, 8, 16, 32 });
 
     tuner.AddConstraint(kernel_id, { "ALIGNED", "THREADS_PER_ROW" },
         [](const std::vector<uint64_t>& vals)
@@ -186,19 +186,6 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
                                   || vals[0] == 1;
             return true;
         });
-
-    // tuner.AddConstraint(kernel_id, { "THREADS_PER_ROW", "DYNAMIC" },
-    //     [](const std::vector<uint64_t>& vals)
-    //     {
-    //         if (vals[1] == 1) return vals[0] == 32
-    //                               || vals[0] == 1
-    //                               || vals[0] == 0;
-    //         return true;
-    //     });
-
-    // TODO: Calculate from the actual passed values above.
-    // unsigned max_workers = (u * 32) * 512;
-    // row_starts = decltype(row_starts){ max_workers };
 
     max_workers = (u * 32) * 512;
 
