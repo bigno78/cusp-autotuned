@@ -460,14 +460,5 @@ void csr_spmv(const unsigned int num_rows,
         printf("invalid THREADS_PER_ROW value\n"), assert(false);
     #endif
 
-    // if constexpr (THREADS_PER_ROW == 0)
-    //     csr_kernel_block<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
-    // else if constexpr (THREADS_PER_ROW == 1)
-    //     csr_kernel_naive<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
-    // else if constexpr (THREADS_PER_ROW <= 32)
-    //     csr_kernel_warp<Idx, Val1, Val2, Val3>(num_rows, Ar, Ac, Ax, x, y);
-    // else
-    //     printf("invalid THREADS_PER_ROW value\n"), assert(false);
-
 #endif
 }

@@ -107,10 +107,6 @@ template<typename Mat>
 void update_row_starts(int block_count, int block_size, int threads_per_row,
                        const Mat& A)
 {
-    // auto block_count = get_parameter_uint(conf, "BLOCKS");
-    // auto threads_per_row = get_parameter_uint(conf, "THREADS_PER_ROW");
-    // auto warps_in_block = get_parameter_uint(conf, "BLOCK_SIZE") / threads_per_row;
-
     if (threads_per_row == 0) threads_per_row = 32;
 
     int warps_in_block = block_size / threads_per_row;
@@ -129,7 +125,6 @@ void update_row_starts(int block_count, int block_size, int threads_per_row,
     cudaEventElapsedTime(&delta_ms, cu_start, cu_stop);
 
     last_row_starts_compute_us = delta_ms * 1000;
-    // std::cout << "csr::compute_row_starts: " << " (cuda " << last_row_starts_compute_us << " us)" << std::endl;
 }
 
 
