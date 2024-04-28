@@ -1,4 +1,26 @@
 
+template<typename T>
+__device__
+T load_no_cache(const T* val)
+{
+#if SPECIAL_LOADS == 0
+    return *val;
+#else
+    return __ldcs(val);
+#endif
+}
+
+template<typename T>
+__device__
+T load_cache(const T* val)
+{
+#if SPECIAL_LOADS == 0
+    return *val;
+#else
+    return __ldg(val);
+#endif
+}
+
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __global__
@@ -32,8 +54,8 @@ void naive_coo_kernel(const Idx* __restrict__ row_indices,
     const int n = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     if (n < num_entries)
     {
-        Val1 value = values[n] * x[col_indices[n]];
-        auto* ptr = &y[row_indices[n]];
+        Val1 value = load_no_cache(values + n) * load_cache( x + load_no_cache( col_indices + n ) );
+        auto* ptr = &y[ load_no_cache( row_indices + n ) ];
         atomicAdd(ptr, value);
     }
 }
@@ -58,13 +80,13 @@ void naive_multi(const Idx* __restrict__ row_indices,
         return;
 
     Val3 value = 0;
-    Idx row = row_indices[ begin ];
+    Idx row = load_no_cache( row_indices + begin );
 #if AVOID_ATOMIC == 1
     bool first = true;
 #endif
     for (int i = begin; i < end; ++i)
     {
-        Idx cur = row_indices[ i ];
+        Idx cur = load_no_cache( row_indices + i );
         if (row != cur)
         {
 #if AVOID_ATOMIC == 1
@@ -76,7 +98,7 @@ void naive_multi(const Idx* __restrict__ row_indices,
 #endif
             value = 0;
         }
-        value += values[ i ] * x[ col_indices[ i ] ];
+        value += load_no_cache(values + i) * load_cache( x + load_no_cache( col_indices + i ) );
         row = cur;
     }
     auto* ptr = &y[ row ];
@@ -118,8 +140,8 @@ void shared_single(const Idx* __restrict__ row_indices,
 
         if (j < num_entries)
         {
-            sh_rows[ idx_in_blk + 1 ] = row_indices[ j ];
-            sh_vals[ idx_in_blk + 1 ] = values[ j ] * x[ col_indices[ j ] ];
+            sh_rows[ idx_in_blk + 1 ] = load_no_cache( row_indices + j);
+            sh_vals[ idx_in_blk + 1 ] = load_no_cache(values + j) * load_cache( x + load_no_cache( col_indices + j ) );
         }
         else
         {
@@ -192,8 +214,8 @@ void shared_multi(const Idx* __restrict__ row_indices,
 
         if (idx < num_entries)
         {
-            auto row = row_indices[ idx ];
-            auto value = values[ idx ] * x[ col_indices[ idx ] ];
+            auto row = load_no_cache( row_indices + idx );
+            auto value = load_no_cache( values + idx ) * load_cache( x + load_no_cache( col_indices + idx ) );
             sh_rows[ idx_in_blk + i * BLOCK_SIZE ] = row;
             sh_vals[ idx_in_blk + i * BLOCK_SIZE ] = value;
         }
@@ -290,10 +312,10 @@ void coo_warp_reduce(const Idx* __restrict__ row_indices,
 
     for (unsigned idx = begin + lane; idx < end; idx += WARP_SIZE)
     {
-        Idx row = row_indices[ idx ];
-        Idx col = col_indices[ idx ];
+        Idx row = load_no_cache( row_indices + idx );
+        Idx col = load_no_cache( col_indices + idx );
 
-        Val3 val = values[ idx ] * x[ col ];
+        Val3 val = load_no_cache( values + idx ) * load_cache( x + col );
 
 #if USE_CARRY != 0
         if (lane == 0)

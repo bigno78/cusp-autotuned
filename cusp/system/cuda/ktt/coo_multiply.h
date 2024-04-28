@@ -33,6 +33,8 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     tuner.AddParameter(kernel_id, "USE_CARRY", u64_vec{ 0, 1 });
     tuner.AddParameter(kernel_id, "AVOID_ATOMIC", u64_vec{ 0, 1 });
 
+    tuner.AddParameter(kernel_id, "SPECIAL_LOADS", u64_vec{ 0, 1 });
+
     tuner.AddConstraint(kernel_id, { "USE_CARRY", "IMPL" }, [](const auto& vals)
         {
             if (vals[0] == 1) return vals[1] == 0;
