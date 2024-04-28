@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <cstdlib>
+#include <utility>
 
 #include <cuda.h>
 
@@ -118,9 +119,12 @@ std::vector<::ktt::KernelResult>
 tune(const Matrix<IndexType, ValueType1, cusp::device_memory>& A,
      const cusp::array1d<ValueType2, cusp::device_memory>& x,
      cusp::array1d<ValueType3, cusp::device_memory>& y,
-     std::optional<::ktt::ReferenceComputation> reference_computation)
+     std::optional<::ktt::ReferenceComputation> reference_computation,
+     std::unique_ptr<::ktt::StopCondition> stop_condition,
+     std::unique_ptr<::ktt::Searcher> searcher)
 {
-    return cusp::system::cuda::ktt::tune(get_tuner(), A, x, y, reference_computation);
+    return cusp::system::cuda::ktt::tune(get_tuner(), A, x, y, reference_computation,
+                                         std::move(stop_condition), std::move(searcher));
 }
 
 template <typename MatrixType,
