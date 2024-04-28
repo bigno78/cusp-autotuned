@@ -94,10 +94,8 @@ void shared_single(const Idx* __restrict__ row_indices,
                    Val3* __restrict__ y,
                    const int y_size)
 {
-    // const unsigned ti         = blockIdx.x * BLOCK_SIZE + threadIdx.x;
     const unsigned idx_in_blk = threadIdx.x;
     const unsigned begin      = blockIdx.x * BLOCK_SIZE * VALUES_PER_THREAD;
-    // const unsigned end        = begin      + BLOCK_SIZE * VALUES_PER_THREAD;
 
     __shared__ Idx  sh_rows[ BLOCK_SIZE + 2 ];
     __shared__ Val1 sh_vals[ BLOCK_SIZE + 2 ];
@@ -187,8 +185,12 @@ void shared_multi(const Idx* __restrict__ row_indices,
     __shared__ Idx  sh_rows[ BLOCK_SIZE * VALUES_PER_THREAD ];
     __shared__ Val1 sh_vals[ BLOCK_SIZE * VALUES_PER_THREAD ];
 
-    // TODO: unroll tuning parameter
-    // #pragma unroll
+// #if UNROLL != 0
+//         constexpr int U = UNROLL;
+//         #pragma unroll (U)
+// #else
+//     #pragma unroll
+// #endif
     for (int i = 0; i < VALUES_PER_THREAD; ++i)
     {
         const int idx = VALUES_PER_THREAD * BLOCK_SIZE * blockIdx.x
@@ -216,7 +218,11 @@ void shared_multi(const Idx* __restrict__ row_indices,
     Val1 value = 0;
     bool first = true;
 
-    // TODO: unroll tuning parameter, too
+// #if UNROLL != 0
+//         #pragma unroll (U)
+// #else
+//     #pragma unroll
+// #endif
     for (int i = 0; i < VALUES_PER_THREAD; ++i)
     {
         Idx cur = sh_rows[ begin + i ];

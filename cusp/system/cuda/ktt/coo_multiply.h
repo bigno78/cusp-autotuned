@@ -32,9 +32,15 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
 
     tuner.AddParameter(kernel_id, "USE_CARRY", u64_vec{ 0, 1 });
     tuner.AddParameter(kernel_id, "AVOID_ATOMIC", u64_vec{ 0, 1 });
+    // tuner.AddParameter(kernel_id, "UNROLL", u64_vec{ 0, 1, 2, 4, 8 });
 
-    tuner.AddConstraint(kernel_id, { "USE_CARRY", "IMPL" },
-        [](const auto& vals)
+    // tuner.AddConstraint(kernel_id, { "UNROLL", "IMPL" }, [](const auto& vals)
+    //     {
+    //         if (vals[0] > 1) return vals[1] == 3;
+    //         return true;
+    //     });
+
+    tuner.AddConstraint(kernel_id, { "USE_CARRY", "IMPL" }, [](const auto& vals)
         {
             if (vals[0] == 1) return vals[1] == 0;
             return true;
@@ -57,14 +63,6 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
 
     tuner.AddThreadModifier(kernel.kernel_id,
             { kernel.definition_ids[0] },
-            ::ktt::ModifierType::Local,
-            ::ktt::ModifierDimension::X,
-            { std::string("BLOCK_SIZE") },
-            [](const uint64_t default_size, const u64_vec& parameters) {
-                return parameters[0];
-            });
-    tuner.AddThreadModifier(kernel.kernel_id,
-            { kernel.definition_ids[1] },
             ::ktt::ModifierType::Local,
             ::ktt::ModifierDimension::X,
             { std::string("BLOCK_SIZE") },
@@ -176,6 +174,17 @@ inline auto get_output_argument(const std::vector<::ktt::ArgumentId>& arguments,
 }
 
 
+template<typename T>
+T divide_into(T value, T chunk)
+{
+    T div = value / chunk;
+    if (value % chunk == 0)
+        return div;
+
+    return div + 1;
+}
+
+
 template <typename Idx, typename Val1, typename Val2, typename Val3>
 auto get_launcher(const kernel_context& ctx,
                   const cusp::coo_matrix<Idx, Val1, cusp::device_memory>& A,
@@ -195,11 +204,20 @@ auto get_launcher(const kernel_context& ctx,
         DimVec grid_size(block_count);
         DimVec zero_grid_size(DIVIDE_INTO(A.num_entries, block_size.GetSizeX()));
 
+        // auto cfg = coo::get_grid_config(A.num_entries, vals_per_thread, block_size.GetSizeX());
+        // DimVec grid_size(cfg.block_count);
+
+        // std::cout << "block_count:       " << block_count << std::endl;
+        // std::cout << "BLOCK_SIZE:        " << block_size.GetSizeX() << std::endl;
+        // std::cout << "VALUES_PER_THREAD: " << vals_per_thread << std::endl;
+        // std::cout << "total:             " << block_count * block_size.GetSizeX() * vals_per_thread << std::endl;
+        // std::cout << "expected:          " << A.num_entries << std::endl;
+
         if (!profile) {
-            interface.RunKernel(ctx.definition_ids[0], zero_grid_size, block_size);
+            interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
             interface.RunKernel(ctx.definition_ids[1], grid_size, block_size);
         } else {
-            interface.RunKernelWithProfiling(ctx.definition_ids[0], zero_grid_size, block_size);
+            interface.RunKernelWithProfiling(ctx.definition_ids[0], grid_size, block_size);
             interface.RunKernelWithProfiling(ctx.definition_ids[1], grid_size, block_size);
         }
     };
