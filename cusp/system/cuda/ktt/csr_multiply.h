@@ -21,7 +21,10 @@ namespace csr {
 
 inline int* row_starts = nullptr;
 inline int max_workers = 0;
+
 inline float last_row_starts_compute_us = -1;
+inline bool record_preprocessing = false;
+inline std::vector<float> preprocessing_times;
 
 inline int* row_counter = nullptr;
 
@@ -125,6 +128,8 @@ void update_row_starts(int block_count, int block_size, int threads_per_row,
     cudaEventElapsedTime(&delta_ms, cu_start, cu_stop);
 
     last_row_starts_compute_us = delta_ms * 1000;
+    if (csr::record_preprocessing)
+        csr::preprocessing_times.push_back(last_row_starts_compute_us);
 }
 
 
