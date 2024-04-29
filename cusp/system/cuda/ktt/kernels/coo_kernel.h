@@ -130,18 +130,23 @@ void shared_single(const Idx* __restrict__ row_indices,
         __syncthreads();
 #endif
 
-        if (idx_in_blk == 0 || idx_in_blk == BLOCK_SIZE-1)
+        if (idx_in_blk == 0)
         {
             sh_rows[ idx_in_blk ] = -1;
             sh_vals[ idx_in_blk ] = 0;
+        }
+
+        if (idx_in_blk == BLOCK_SIZE-1)
+        {
+
             sh_rows[ idx_in_blk + 2 ] = -1;
             sh_vals[ idx_in_blk + 2 ] = 0;
         }
 
         if (j < num_entries)
         {
-            sh_rows[ idx_in_blk + 1 ] = load_no_cache( row_indices + j);
-            sh_vals[ idx_in_blk + 1 ] = load_no_cache(values + j) * load_cache( x + load_no_cache( col_indices + j ) );
+            sh_rows[ idx_in_blk + 1 ] = load_no_cache(row_indices + j);
+            sh_vals[ idx_in_blk + 1 ] = load_no_cache(values + j) * load_cache( x + load_no_cache(col_indices + j) );
         }
         else
         {
