@@ -19,8 +19,6 @@ namespace cusp::system::cuda::ktt {
 
 namespace coo {
 
-inline bool MORE_VALUES_PER_THREAD = false;
-
 inline void setup_tuning_parameters(const kernel_context& kernel)
 {
     auto& tuner = *kernel.tuner;
@@ -67,16 +65,6 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner)
 
     const ::ktt::DimensionVector blockDimensions(0);
     const ::ktt::DimensionVector gridDimensions(0);
-
-    // auto definition_id = tuner.AddKernelDefinitionFromFile(
-    //     "coo_spmv",
-    //     KernelsPath + "coo_kernel.h",
-    //     gridDimensions,
-    //     blockDimensions,
-    //     names_of_types<Idx, Val1, Val2, Val3>()
-    // );
-    // kernel.definition_ids.push_back(definition_id);
-    // kernel.kernel_id = tuner.CreateSimpleKernel("CooKernel", definition_id);
 
     auto def_zero = tuner.AddKernelDefinitionFromFile(
         "zero_output",
