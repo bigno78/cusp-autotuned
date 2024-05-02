@@ -2,8 +2,8 @@
 
 #include <cusp/detail/config.h>
 
-#include <cusp/ktt/detail/external/nameof.hpp>
 #include <cusp/system/cuda/ktt/utils.h>
+#include <cusp/system/cuda/ktt/common.h>
 
 #include <cusp/csr_matrix.h>
 #include <cusp/array1d.h>
@@ -140,43 +140,43 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     auto& tuner = *kernel.tuner;
     auto kernel_id = kernel.kernel_id;
 
-    tuner.AddParameter(kernel_id, "BLOCK_SIZE", std::vector<uint64_t>{ 128, 256, 512 });
+    tuner.AddParameter(kernel_id, "BLOCK_SIZE", u64_vec{ 128, 256, 512 });
 
     auto dev_info = tuner.GetCurrentDeviceInfo();
     auto u = dev_info.GetMaxComputeUnits();
-    tuner.AddParameter(kernel_id, "BLOCKS", std::vector<uint64_t>{ u / 2,
-                                                                   u,
-                                                                   u * 2,
-                                                                   u * 4,
-                                                                   u * 8,
-                                                                   u * 16 });
+    tuner.AddParameter(kernel_id, "BLOCKS", u64_vec{ u / 2,
+                                                     u,
+                                                     u * 2,
+                                                     u * 4,
+                                                     u * 8,
+                                                     u * 16 });
 
-    tuner.AddParameter(kernel_id, "THREADS_PER_ROW", std::vector<uint64_t>{ 0, 1, 2, 4, 8, 16, 32 });
+    tuner.AddParameter(kernel_id, "THREADS_PER_ROW", u64_vec{ 0, 1, 2, 4, 8, 16, 32 });
 
-    tuner.AddParameter(kernel_id, "DYNAMIC", std::vector<uint64_t>{ 0, 1, 2 });
+    tuner.AddParameter(kernel_id, "DYNAMIC", u64_vec{ 0, 1, 2 });
 
-    tuner.AddParameter(kernel_id, "AVOID_ATOMIC", std::vector<uint64_t>{ 0, 1 });
-    tuner.AddParameter(kernel_id, "ALIGNED", std::vector<uint64_t>{ 0, 1 });
-    tuner.AddParameter(kernel_id, "SPECIAL_LOADS", std::vector<uint64_t>{ 0, 1, 2, 3 });
+    tuner.AddParameter(kernel_id, "AVOID_ATOMIC", u64_vec{ 0, 1 });
+    tuner.AddParameter(kernel_id, "ALIGNED", u64_vec{ 0, 1 });
+    tuner.AddParameter(kernel_id, "SPECIAL_LOADS", u64_vec{ 0, 1, 2, 3 });
 
-    tuner.AddParameter(kernel_id, "UNROLL", std::vector<uint64_t>{ 0, 1, 2, 4, 8, 16, 32 });
+    tuner.AddParameter(kernel_id, "UNROLL", u64_vec{ 0, 1, 2, 4, 8, 16, 32 });
 
     tuner.AddConstraint(kernel_id, { "ALIGNED", "THREADS_PER_ROW" },
-        [](const std::vector<uint64_t>& vals)
+        [](const u64_vec& vals)
         {
             if (vals[0] == 1) return vals[1] == 32 || vals[1] == 0;
             return true;
         });
 
     tuner.AddConstraint(kernel_id, { "AVOID_ATOMIC", "DYNAMIC" },
-        [](const std::vector<uint64_t>& vals)
+        [](const u64_vec& vals)
         {
             if (vals[0] == 1) return vals[1] == 2;
             return true;
         });
 
     tuner.AddConstraint(kernel_id, { "THREADS_PER_ROW", "DYNAMIC" },
-        [](const std::vector<uint64_t>& vals)
+        [](const u64_vec& vals)
         {
             if (vals[1] == 2) return vals[0] == 32
                                   || vals[0] == 16
@@ -208,36 +208,20 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
 }
 
 
-template<typename IndexType,
-         typename ValueType1,
-         typename ValueType2,
-         typename ValueType3>
+template<typename Idx, typename Val1, typename Val2, typename Val3>
 kernel_context initialize_kernel(::ktt::Tuner& tuner)
 {
-    std::string kernel_path =
-        STRING(CUSP_PATH) "/cusp/system/cuda/ktt/kernels/csr_kernel.h";
-
     kernel_context kernel(tuner);
 
-    std::vector< std::string > type_names {
-        std::string(NAMEOF_TYPE(IndexType)),
-        std::string(NAMEOF_TYPE(ValueType1)),
-        std::string(NAMEOF_TYPE(ValueType2)),
-        std::string(NAMEOF_TYPE(ValueType3)),
-    };
-
-    // NOTE: These can be anything since they are awlays set in the launcher.
-    // So use some values that will hopefully cause a crash if not set properly
-    // in the launcher.
     ::ktt::DimensionVector block_size(0);
     ::ktt::DimensionVector grid_size(0);
 
     auto definition_id = tuner.AddKernelDefinitionFromFile(
         "csr_spmv",
-        kernel_path,
+        KernelsPath + "csr_kernel.h",
         grid_size,
         block_size,
-        type_names
+        names_of_types<Idx, Val1, Val2, Val3>()
     );
 
     kernel.definition_ids.push_back(definition_id);
@@ -258,10 +242,9 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner)
 } // namespace csr
 
 
-template<typename Idx, typename Val1,typename Val2, typename Val3,
-         typename MemorySpace>
+template<typename Idx, typename Val1,typename Val2, typename Val3, typename Mem>
 const kernel_context& get_kernel(::ktt::Tuner& tuner,
-                const cusp::csr_matrix<Idx, Val1, MemorySpace>&)
+                const cusp::csr_matrix<Idx, Val1, Mem>&)
 {
     static kernel_context kernel =
         csr::initialize_kernel<Idx, Val1, Val2, Val3>(tuner);
@@ -270,15 +253,12 @@ const kernel_context& get_kernel(::ktt::Tuner& tuner,
 }
 
 
-template <typename IndexType,
-          typename ValueType1,
-          typename ValueType2,
-          typename ValueType3>
+template <typename Idx, typename Val1, typename Val2, typename Val3>
 std::vector<::ktt::ArgumentId>
 add_arguments(const kernel_context& kernel,
-              const cusp::csr_matrix<IndexType, ValueType1, cusp::device_memory>& A,
-              const cusp::array1d<ValueType2, cusp::device_memory>& x,
-              cusp::array1d<ValueType3, cusp::device_memory>& y)
+              const cusp::csr_matrix<Idx, Val1, cusp::device_memory>& A,
+              const cusp::array1d<Val2, cusp::device_memory>& x,
+              cusp::array1d<Val3, cusp::device_memory>& y)
 {
     auto args = add_arguments(*kernel.tuner,
                               A.num_rows, A.row_offsets, A.column_indices,
@@ -303,14 +283,11 @@ get_output_argument(const std::vector<::ktt::ArgumentId>& arguments,
 }
 
 
-template <typename IndexType,
-          typename ValueType1,
-          typename ValueType2,
-          typename ValueType3>
+template <typename Idx, typename Val1, typename Val2, typename Val3>
 auto get_launcher(const kernel_context& ctx,
-                  const cusp::csr_matrix<IndexType, ValueType1, cusp::device_memory>& A,
-                  const cusp::array1d<ValueType2, cusp::device_memory>& x,
-                  cusp::array1d<ValueType3, cusp::device_memory>& y,
+                  const cusp::csr_matrix<Idx, Val1, cusp::device_memory>& A,
+                  const cusp::array1d<Val2, cusp::device_memory>& x,
+                  cusp::array1d<Val3, cusp::device_memory>& y,
                   bool profile = false)
 {
     return [&, profile](::ktt::ComputeInterface& interface)
