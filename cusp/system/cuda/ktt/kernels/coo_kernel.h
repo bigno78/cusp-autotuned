@@ -63,13 +63,13 @@ void naive_coo_kernel(const Idx* __restrict__ row_indices,
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
-void naive_multi(const Idx* __restrict__ row_indices,
-                 const Idx* __restrict__ col_indices,
-                 const Val1* __restrict__ values,
-                 const int num_entries,
-                 const Val2* __restrict__ x,
-                 Val3* __restrict__ y,
-                 const int y_size)
+void coo_direct_multi(const Idx* __restrict__ row_indices,
+                      const Idx* __restrict__ col_indices,
+                      const Val1* __restrict__ values,
+                      const int num_entries,
+                      const Val2* __restrict__ x,
+                      Val3* __restrict__ y,
+                      const int y_size)
 {
     const unsigned idx = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     const unsigned begin = idx * VALUES_PER_THREAD;
@@ -108,7 +108,7 @@ void naive_multi(const Idx* __restrict__ row_indices,
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
-void shared_single(const Idx* __restrict__ row_indices,
+void coo_shared_single(const Idx* __restrict__ row_indices,
                    const Idx* __restrict__ col_indices,
                    const Val1* __restrict__ values,
                    const int num_entries,
@@ -199,13 +199,13 @@ void shared_single(const Idx* __restrict__ row_indices,
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
-void shared_multi(const Idx* __restrict__ row_indices,
-                  const Idx* __restrict__ col_indices,
-                  const Val1* __restrict__ values,
-                  const int num_entries,
-                  const Val2* __restrict__ x,
-                  Val3* __restrict__ y,
-                  const int y_size)
+void coo_shared_multi(const Idx* __restrict__ row_indices,
+                      const Idx* __restrict__ col_indices,
+                      const Val1* __restrict__ values,
+                      const int num_entries,
+                      const Val2* __restrict__ x,
+                      Val3* __restrict__ y,
+                      const int y_size)
 {
     const unsigned idx_in_blk = threadIdx.x;
 
@@ -381,16 +381,12 @@ void coo_spmv(const Idx* __restrict__ row_indices,
                const int y_size)
 {
 #if IMPL == 0
-    coo_warp_reduce(        row_indices, col_indices, values, num_entries, x, y, y_size    );
+    coo_warp_reduce(    row_indices, col_indices, values, num_entries, x, y, y_size    );
 #elif IMPL == 1
-    #if VALUES_PER_THREAD == 1
-        naive_coo_kernel(   row_indices, col_indices, values, num_entries, x, y, y_size    );
-    #else
-        naive_multi(        row_indices, col_indices, values, num_entries, x, y, y_size    );
-    #endif
+    coo_direct_multi(   row_indices, col_indices, values, num_entries, x, y, y_size    );
 #elif IMPL == 2
-        shared_single(      row_indices, col_indices, values, num_entries, x, y, y_size    );
+    coo_shared_single(      row_indices, col_indices, values, num_entries, x, y, y_size    );
 #else
-        shared_multi(       row_indices, col_indices, values, num_entries, x, y, y_size    );
+    coo_shared_multi(       row_indices, col_indices, values, num_entries, x, y, y_size    );
 #endif
 }
