@@ -365,6 +365,8 @@ inline auto divide_into(T value, U chunk)
 }
 
 
+// Avoid compiler complaining about division by zero.
+#if THREADS_PER_ROW > 0
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
 __device__
@@ -426,6 +428,8 @@ void csr_kernel_balanced(const unsigned int num_rows,
             return;
     }
 }
+
+#endif
 
 
 
