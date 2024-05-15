@@ -269,33 +269,33 @@ void csr_kernel_block(const unsigned int num_rows,
     for (unsigned row = begin; row < num_rows; row += BLOCK_COUNT)
 #endif
     {
-    if (idx_in_blk < 2)
-        sh_row_info[ idx_in_blk ] = load_row_last(Ar + row + idx_in_blk);
-    __syncthreads();
-    const Idx row_start = sh_row_info[ 0 ];
-    const Idx row_end   = sh_row_info[ 1 ];
+        if (idx_in_blk < 2)
+            sh_row_info[ idx_in_blk ] = load_row_last(Ar + row + idx_in_blk);
 
+        __syncthreads();
+        const Idx row_start = sh_row_info[ 0 ];
+        const Idx row_end   = sh_row_info[ 1 ];
 
-    Val3 value = accumulate<BLOCK_SIZE, Val1, Val2, Idx>(0, idx_in_blk, row_start, row_end, Ac, Ax, x);
+        Val3 value = accumulate<BLOCK_SIZE, Val1, Val2, Idx>(0, idx_in_blk, row_start, row_end, Ac, Ax, x);
 
-    constexpr unsigned mask = 0xffffffff;
-    #pragma unroll
-    for (int off = WARP_SIZE / 2; off >= 1; off /= 2)
-        value += __shfl_down_sync(mask, value, off);
-
-    if (lane == 0)
-        sh_sums[ warp_in_block ] = value;
-
-    __syncthreads();
-
-    if (idx_in_blk == 0)
-    {
-        Val1 total_sum = 0;
+        constexpr unsigned mask = 0xffffffff;
         #pragma unroll
-        for (int j = 0; j < BLOCK_SIZE / WARP_SIZE; ++j)
-            total_sum += sh_sums[ j ];
-        y[ row ] = total_sum;
-    }
+        for (int off = WARP_SIZE / 2; off >= 1; off /= 2)
+            value += __shfl_down_sync(mask, value, off);
+
+        if (lane == 0)
+            sh_sums[ warp_in_block ] = value;
+
+        __syncthreads();
+
+        if (idx_in_blk == 0)
+        {
+            Val1 total_sum = 0;
+            #pragma unroll
+            for (int j = 0; j < BLOCK_SIZE / WARP_SIZE; ++j)
+                total_sum += sh_sums[ j ];
+            y[ row ] = total_sum;
+        }
     }
 }
 
