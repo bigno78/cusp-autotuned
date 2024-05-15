@@ -1,5 +1,4 @@
 
-
 __device__ int* row_counter;
 
 
@@ -59,7 +58,6 @@ int assign_row(const int prev_row, const int worker_idx, const int total_workers
 #endif
 
 }
-
 
 
 template<typename T>
@@ -152,13 +150,11 @@ Val2 accumulate(Val2 value, const Idx lane, const Idx row_begin, const Idx row_e
         #pragma unroll (U)
 #endif
         for (int i = row_begin + lane; i < row_end; i += Total)
-            // value += Ax[ i ] * x[ Ac[ i ] ];
             value += get(i);
     }
 
     return value;
 }
-
 
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
@@ -182,22 +178,8 @@ void csr_kernel_naive(const unsigned int num_rows,
     for (Idx row = idx; row < num_rows; row += total_threads)
 #endif
     {
-        sum = 0;
-        // TODO: read this coalesed with the whole block, might be faster
-        // Idx row_start = Ar[row];
-        // Idx row_end = Ar[row + 1];
-
         Idx row_start = load_row_first(Ar + row);
         Idx row_end   = load_row_last( Ar + row + 1);
-
-        // TODO: Didn't seem to be faster.
-        // constexpr int SHIFT = 17;
-        // sh_row_info[ idx_in_blk + idx_in_blk / SHIFT ] = Ar[ row ];
-        // if (idx_in_blk == BLOCK_SIZE - 1)
-        //     sh_row_info[ BLOCK_SIZE + BLOCK_SIZE / SHIFT ] = Ar[ row + 1 ];
-        // __syncthreads();
-        // Idx row_start = sh_row_info[ idx_in_blk + idx_in_blk / SHIFT ];
-        // Idx row_end   = sh_row_info[ (idx_in_blk + 1) + ((idx_in_blk + 1) / SHIFT) ];
 
         sum = accumulate<1, Val1, Val2, Idx>(0, 0, row_start, row_end, Ac, Ax, x);
         y[row] = sum;
@@ -205,6 +187,7 @@ void csr_kernel_naive(const unsigned int num_rows,
 }
 
 
+// Avoid compiler warning about division by 0.
 #if THREADS_PER_ROW != 0
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
@@ -234,18 +217,13 @@ void csr_kernel_warp(const unsigned int num_rows,
     for (Idx row = ti / THREADS_PER_ROW; row < num_rows; row += vector_count)
 #endif
     {
-    // TODO: This.
     if (lane < 2)
-        // sh_row_info[ worker_idx ][ lane ] = Ar[ row + lane ];
         sh_row_info[ worker_idx ][ lane ] = load_row_last(Ar + row + lane);
     __syncthreads();
     Idx row_start = sh_row_info[ worker_idx ][ 0 ];
     Idx row_end   = sh_row_info[ worker_idx ][ 1 ];
 
-
-    Val3 value = 0;
-
-    value = accumulate<THREADS_PER_ROW, Val1, Val2, Idx>(0, lane, row_start, row_end, Ac, Ax, x);
+    Val3 value = accumulate<THREADS_PER_ROW, Val1, Val2, Idx>(0, lane, row_start, row_end, Ac, Ax, x);
 
     constexpr unsigned mask = 0xffffffff;
     #pragma unroll
@@ -259,12 +237,6 @@ void csr_kernel_warp(const unsigned int num_rows,
 }
 
 #endif
-
-
-
-
-
-
 
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
@@ -288,9 +260,6 @@ void csr_kernel_block(const unsigned int num_rows,
     __shared__ Val3 sh_sums[ BLOCK_SIZE / WARP_SIZE ];
     __shared__ Idx sh_row_info[2];
 
-    // TODO: better fetching of row info
-    // for (int row = blk_idx * ROWS_PER_BLOCK; row < blk_idx * ROWS_PER_BLOCK + ROWS_PER_BLOCK; ++row)
-
     int begin = blk_idx;
 
 #if DYNAMIC != 0
@@ -300,18 +269,14 @@ void csr_kernel_block(const unsigned int num_rows,
     for (unsigned row = begin; row < num_rows; row += BLOCK_COUNT)
 #endif
     {
-    // TODO: check if this correct and faster
     if (idx_in_blk < 2)
-        // sh_row_info[ idx_in_blk ] = Ar[ row + idx_in_blk ];
         sh_row_info[ idx_in_blk ] = load_row_last(Ar + row + idx_in_blk);
     __syncthreads();
     const Idx row_start = sh_row_info[ 0 ];
     const Idx row_end   = sh_row_info[ 1 ];
 
 
-    Val3 value = 0;
-
-    value = accumulate<BLOCK_SIZE, Val1, Val2, Idx>(0, idx_in_blk, row_start, row_end, Ac, Ax, x);
+    Val3 value = accumulate<BLOCK_SIZE, Val1, Val2, Idx>(0, idx_in_blk, row_start, row_end, Ac, Ax, x);
 
     constexpr unsigned mask = 0xffffffff;
     #pragma unroll
@@ -323,7 +288,6 @@ void csr_kernel_block(const unsigned int num_rows,
 
     __syncthreads();
 
-    // TODO: try idx_in_blk < 32 and use the whole warp to reduce shmem
     if (idx_in_blk == 0)
     {
         Val1 total_sum = 0;
@@ -332,23 +296,6 @@ void csr_kernel_block(const unsigned int num_rows,
             total_sum += sh_sums[ j ];
         y[ row ] = total_sum;
     }
-
-    // Reduce using warp shuffles.
-    // Val1 sum = 0;
-    // constexpr unsigned warp_count = BLOCK_SIZE / WARP_SIZE;
-    // if (idx_in_blk < WARP_SIZE)
-    // {
-    //     if (idx_in_blk < warp_count)
-    //         sum = sh_sums[ idx_in_blk ];
-
-    //     constexpr unsigned mask = 0xffffffff;
-    //     #pragma unroll
-    //     for (int off = warp_count / 2; off >= 1; off /= 2)
-    //         sum += __shfl_down_sync(mask, sum, off, warp_count);
-
-    //     if (idx_in_blk == 0)
-    //         y[ row ] = sum;
-    // }
     }
 }
 
@@ -365,7 +312,7 @@ inline auto divide_into(T value, U chunk)
 }
 
 
-// Avoid compiler complaining about division by zero.
+// Avoid compiler warning about division by zero.
 #if THREADS_PER_ROW > 0
 
 template<typename Idx, typename Val1, typename Val2, typename Val3>
@@ -422,7 +369,6 @@ void csr_kernel_balanced(const unsigned int num_rows,
                 atomicAdd(&y[ row ], value);
         }
 
-        // TODO: AAAaaaAAaAAaaaAaaaAAAAAaAAAaAaaaaaaAAAaaAAAaaaaaAAA
         // This means the worker has no more work, so no need to read another row offset value.
         if (end <= real_row_end)
             return;
