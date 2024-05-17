@@ -349,9 +349,7 @@ void csr_kernel_balanced(const unsigned int num_rows,
         const int row_begin = max( real_row_begin, begin );
         const int row_end   = min( real_row_end, end );
 
-        Val1 value = 0;
-
-        value = accumulate<THREADS_PER_ROW, Val1, Val2, Idx>(0, lane, row_begin, row_end, Ac, Ax, x);
+        Val1 value = accumulate<THREADS_PER_ROW, Val1, Val2, Idx>(0, lane, row_begin, row_end, Ac, Ax, x);
 
         constexpr unsigned mask = 0xffffffff;
         #pragma unroll
