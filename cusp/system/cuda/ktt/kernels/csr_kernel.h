@@ -201,8 +201,6 @@ void csr_kernel_warp(const unsigned int num_rows,
 {
     const int ti         = BLOCK_SIZE * blockIdx.x + threadIdx.x;
     const int lane       = modulo2exp(threadIdx.x, THREADS_PER_ROW);
-    const int idx_in_blk = threadIdx.x;
-    const int blk_idx    = blockIdx.x;
     const int worker_idx = threadIdx.x / THREADS_PER_ROW;
 
     const int vectors_per_block = BLOCK_SIZE / THREADS_PER_ROW;

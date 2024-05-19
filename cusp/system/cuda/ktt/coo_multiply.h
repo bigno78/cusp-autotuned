@@ -47,14 +47,10 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
             return true;
         });
 
-    tuner.AddThreadModifier(kernel.kernel_id,
-            { kernel.definition_ids[0] },
-            ::ktt::ModifierType::Local,
-            ::ktt::ModifierDimension::X,
+    tuner.AddThreadModifier(kernel.kernel_id, { kernel.definition_ids[0] },
+            ::ktt::ModifierType::Local, ::ktt::ModifierDimension::X,
             { std::string("BLOCK_SIZE") },
-            [](const uint64_t default_size, const u64_vec& parameters) {
-                return parameters[0];
-            });
+            [](uint64_t default_, const u64_vec& params) { return params[0]; });
 }
 
 
@@ -63,21 +59,21 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner)
 {
     kernel_context kernel(tuner);
 
-    const ::ktt::DimensionVector blockDimensions(0);
-    const ::ktt::DimensionVector gridDimensions(0);
+    auto block_dim = ::ktt::DimensionVector(0);
+    auto grid_dim  = ::ktt::DimensionVector(0);
 
     auto def_zero = tuner.AddKernelDefinitionFromFile(
         "zero_output",
         KernelsPath + "coo_kernel.h",
-        gridDimensions,
-        blockDimensions,
+        grid_dim,
+        block_dim,
         names_of_types<Idx, Val1, Val2, Val3>()
     );
     auto def_spmv = tuner.AddKernelDefinitionFromFile(
         "coo_spmv",
         KernelsPath + "coo_kernel.h",
-        gridDimensions,
-        blockDimensions,
+        grid_dim,
+        block_dim,
         names_of_types<Idx, Val1, Val2, Val3>()
     );
     kernel.definition_ids.push_back(def_zero);
@@ -124,16 +120,15 @@ const kernel_context& get_kernel(::ktt::Tuner& tuner,
 }
 
 
-template <typename Idx, typename Val1, typename Val2, typename Val3>
+template<typename Idx, typename Val1, typename Val2, typename Val3>
 auto add_arguments(const kernel_context& kernel,
                    const cusp::coo_matrix<Idx, Val1, cusp::device_memory>& A,
                    const cusp::array1d<Val2, cusp::device_memory>& x,
                          cusp::array1d<Val3, cusp::device_memory>& y)
     -> std::vector<::ktt::ArgumentId>
 {
-    auto args =
-        add_arguments(*kernel.tuner, A.row_indices, A.column_indices, A.values,
-                      A.values.size(), x, y, y.size());
+    auto args = add_arguments(*kernel.tuner, A.row_indices, A.column_indices,
+                              A.values, A.values.size(), x, y, y.size());
 
     kernel.tuner->SetArguments(kernel.definition_ids[0], args);
     kernel.tuner->SetArguments(kernel.definition_ids[1], args);
@@ -142,26 +137,15 @@ auto add_arguments(const kernel_context& kernel,
 }
 
 
-inline auto get_output_argument(const std::vector<::ktt::ArgumentId>& arguments,
+inline auto get_output_argument(const std::vector<::ktt::ArgumentId>& args,
                                 cusp::coo_format)
     -> ::ktt::ArgumentId
 {
-    return arguments[5];
+    return args[5];
 }
 
 
-template<typename T>
-T divide_into(T value, T chunk)
-{
-    T div = value / chunk;
-    if (value % chunk == 0)
-        return div;
-
-    return div + 1;
-}
-
-
-template <typename Idx, typename Val1, typename Val2, typename Val3>
+template<typename Idx, typename Val1, typename Val2, typename Val3>
 auto get_launcher(const kernel_context& ctx,
                   const cusp::coo_matrix<Idx, Val1, cusp::device_memory>& A,
                   const cusp::array1d<Val2, cusp::device_memory>& x,
@@ -180,10 +164,13 @@ auto get_launcher(const kernel_context& ctx,
         DimVec grid_size(block_count);
         DimVec zero_grid_size(DIVIDE_INTO(A.num_entries, block_size.GetSizeX()));
 
-        if (!profile) {
+        if (!profile)
+        {
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
             interface.RunKernel(ctx.definition_ids[1], grid_size, block_size);
-        } else {
+        }
+        else
+        {
             interface.RunKernelWithProfiling(ctx.definition_ids[0], grid_size, block_size);
             interface.RunKernelWithProfiling(ctx.definition_ids[1], grid_size, block_size);
         }

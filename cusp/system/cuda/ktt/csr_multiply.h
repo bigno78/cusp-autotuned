@@ -195,16 +195,10 @@ inline void setup_tuning_parameters(const kernel_context& kernel)
     cudaMalloc(&row_starts,    max_workers * sizeof(int));
     cudaMemset(row_starts,  0, max_workers * sizeof(int));
 
-    tuner.AddThreadModifier(
-        kernel.kernel_id,
-        { kernel.definition_ids[0] },
-        ::ktt::ModifierType::Local,
-        ::ktt::ModifierDimension::X,
-        { std::string("BLOCK_SIZE") },
-        [](const uint64_t defaultSize, const std::vector<uint64_t>& parameters) {
-            return parameters[0];
-        }
-    );
+    tuner.AddThreadModifier(kernel.kernel_id, { kernel.definition_ids[0] },
+            ::ktt::ModifierType::Local, ::ktt::ModifierDimension::X,
+            { std::string("BLOCK_SIZE") },
+            [](uint64_t default_, const u64_vec& params) { return params[0]; });
 }
 
 
@@ -213,8 +207,8 @@ kernel_context initialize_kernel(::ktt::Tuner& tuner)
 {
     kernel_context kernel(tuner);
 
-    ::ktt::DimensionVector block_size(0);
-    ::ktt::DimensionVector grid_size(0);
+    auto block_size = ::ktt::DimensionVector(0);
+    auto grid_size = ::ktt::DimensionVector(0);
 
     auto definition_id = tuner.AddKernelDefinitionFromFile(
         "csr_spmv",
@@ -253,12 +247,12 @@ const kernel_context& get_kernel(::ktt::Tuner& tuner,
 }
 
 
-template <typename Idx, typename Val1, typename Val2, typename Val3>
-std::vector<::ktt::ArgumentId>
-add_arguments(const kernel_context& kernel,
-              const cusp::csr_matrix<Idx, Val1, cusp::device_memory>& A,
-              const cusp::array1d<Val2, cusp::device_memory>& x,
-              cusp::array1d<Val3, cusp::device_memory>& y)
+template<typename Idx, typename Val1, typename Val2, typename Val3>
+auto add_arguments(const kernel_context& kernel,
+                   const cusp::csr_matrix<Idx, Val1, cusp::device_memory>& A,
+                   const cusp::array1d<Val2, cusp::device_memory>& x,
+                   cusp::array1d<Val3, cusp::device_memory>& y)
+    -> std::vector<::ktt::ArgumentId>
 {
     auto args = add_arguments(*kernel.tuner,
                               A.num_rows, A.row_offsets, A.column_indices,
@@ -273,17 +267,16 @@ add_arguments(const kernel_context& kernel,
 }
 
 
-// Returns the argument id of the y vector given a vector of arguments
-// returned by a previous call of `add_arguments`.
-inline ::ktt::ArgumentId
-get_output_argument(const std::vector<::ktt::ArgumentId>& arguments,
-                    cusp::csr_format)
+
+inline auto get_output_argument(const std::vector<::ktt::ArgumentId>& args,
+                                cusp::csr_format)
+    -> ::ktt::ArgumentId
 {
-    return arguments[5];
+    return args[5];
 }
 
 
-template <typename Idx, typename Val1, typename Val2, typename Val3>
+template<typename Idx, typename Val1, typename Val2, typename Val3>
 auto get_launcher(const kernel_context& ctx,
                   const cusp::csr_matrix<Idx, Val1, cusp::device_memory>& A,
                   const cusp::array1d<Val2, cusp::device_memory>& x,
@@ -298,7 +291,7 @@ auto get_launcher(const kernel_context& ctx,
             interface.GetCurrentLocalSize(ctx.definition_ids[0]);
 
         auto block_count = get_parameter_uint(conf, "BLOCKS");
-        ::ktt::DimensionVector grid_size(block_count);
+        auto grid_size = ::ktt::DimensionVector(block_count);
 
         auto dynamic = get_parameter_uint(conf, "DYNAMIC");
 
@@ -313,12 +306,11 @@ auto get_launcher(const kernel_context& ctx,
         if (dynamic == 1)
             csr::reset_row_counter();
 
-        if (!profile) {
+        if (!profile)
             interface.RunKernel(ctx.definition_ids[0], grid_size, block_size);
-        } else {
+        else
             interface.RunKernelWithProfiling(ctx.definition_ids[0],
                                              grid_size, block_size);
-        }
     };
 }
 
