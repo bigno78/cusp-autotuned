@@ -35,6 +35,7 @@
 #include <thrust/scatter.h>
 #include <thrust/sequence.h>
 #include <thrust/tuple.h>
+#include <thrust/partition.h>
 
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/iterator/counting_iterator.h>

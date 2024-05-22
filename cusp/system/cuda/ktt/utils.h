@@ -38,6 +38,19 @@ template<typename T>
 }
 
 template<typename T>
+::ktt::ArgumentId add_arg(::ktt::Tuner& tuner, T* ptr)
+{
+    auto id = tuner.AddArgumentVector<T>(ptr,
+                                         sizeof(T),
+                                         ::ktt::ArgumentAccessType::ReadWrite,
+                                         ::ktt::ArgumentMemoryLocation::Device);
+    if (id == ::ktt::InvalidArgumentId) {
+        std::cerr << "ERROR: Adding pointer argument failed and I don't know why\n";
+    }
+    return id;
+}
+
+template<typename T>
 ::ktt::ArgumentId add_arg(::ktt::Tuner& tuner,
              const cusp::array1d<T, cusp::device_memory>& array)
 {

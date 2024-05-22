@@ -462,7 +462,7 @@ void __spmv_coo_flat(cuda::execution_policy<DerivedPolicy>& exec,
     (A.num_entries - tail, A.row_indices.begin() + tail, A.column_indices.begin() + tail, A.values.begin() + tail, x.begin(), y.begin(), combine, reduce);
 }
 
-#if THRUST_VERSION < 100800
+#if THRUST_VERSION < 100800 || USE_ORIGINAL_COO_KERNEL == 1
 template <typename DerivedPolicy,
          typename MatrixType,
          typename VectorType1,

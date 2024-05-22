@@ -3,6 +3,8 @@
 #include <cusp/detail/config.h>
 #include <cusp/array1d.h>
 
+#include <optional>
+
 #include <Ktt.h>
 
 namespace cusp {
@@ -94,7 +96,9 @@ std::vector<::ktt::KernelResult>
 tune(const Matrix<IndexType, ValueType1, cusp::device_memory>& A,
      const cusp::array1d<ValueType2, cusp::device_memory>& x,
      cusp::array1d<ValueType3, cusp::device_memory>& y,
-     std::optional<::ktt::ReferenceComputation> reference_computation = std::nullopt);
+     std::optional<::ktt::ReferenceComputation> reference_computation = std::nullopt,
+     std::unique_ptr<::ktt::StopCondition> stop_condition = nullptr,
+     std::unique_ptr<::ktt::Searcher> searcher = nullptr);
 
 
 /**
